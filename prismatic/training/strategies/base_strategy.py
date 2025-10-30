@@ -35,6 +35,7 @@ from prismatic.vla.action_tokenizer import ActionTokenizer
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 from prismatic.vla.constants import ACTION_DIM, ACTION_TOKEN_BEGIN_IDX, NUM_ACTIONS_CHUNK, IGNORE_INDEX
+
 NEWLINE_INDEX = 13  # '\n'
 STOP_INDEX = 2  # '</s>'
 
@@ -324,10 +325,14 @@ class TrainingStrategy(ABC):
                 current_action_mask = get_current_action_mask(ground_truth_token_ids)
 
                 # Compute Accuracy
-                action_accuracy = compute_token_accuracy(predicted_token_ids, ground_truth_token_ids, mask=current_action_mask)
+                action_accuracy = compute_token_accuracy(
+                    predicted_token_ids, ground_truth_token_ids, mask=current_action_mask
+                )
 
                 # Compute L1 Loss on Predicted (Continuous) Actions
-                action_l1_loss = compute_actions_l1_loss(action_tokenizer, predicted_token_ids, ground_truth_token_ids, mask=current_action_mask)
+                action_l1_loss = compute_actions_l1_loss(
+                    action_tokenizer, predicted_token_ids, ground_truth_token_ids, mask=current_action_mask
+                )
 
                 #######################################################################
                 # === Compute Next Actions Token Accuracy & L1 Loss ===
@@ -337,10 +342,14 @@ class TrainingStrategy(ABC):
                 next_actions_mask = get_next_actions_mask(ground_truth_token_ids)
 
                 # Compute Accuracy
-                next_actions_accuracy = compute_token_accuracy(predicted_token_ids, ground_truth_token_ids, mask=next_actions_mask)
+                next_actions_accuracy = compute_token_accuracy(
+                    predicted_token_ids, ground_truth_token_ids, mask=next_actions_mask
+                )
 
                 # Compute L1 Loss on Predicted (Continuous) Actions
-                next_actions_l1_loss = compute_actions_l1_loss(action_tokenizer, predicted_token_ids, ground_truth_token_ids, mask=next_actions_mask)
+                next_actions_l1_loss = compute_actions_l1_loss(
+                    action_tokenizer, predicted_token_ids, ground_truth_token_ids, mask=next_actions_mask
+                )
 
                 #######################################################################
                 # === Log ===

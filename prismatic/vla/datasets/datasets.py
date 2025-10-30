@@ -5,12 +5,12 @@ Lightweight PyTorch Dataset Definition for wrapping RLDS TFDS Pipeline; just def
 format to OpenVLA, IterableDataset shim.
 """
 
-
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Tuple, Type
+
 import numpy as np
-import random
 import torch
 from PIL import Image
 from torch.utils.data import Dataset, IterableDataset
@@ -20,10 +20,18 @@ from prismatic.models.backbones.llm.prompting import PromptBuilder, QwenPromptBu
 from prismatic.models.backbones.vision import ImageTransform
 from prismatic.util.data_utils import tree_map
 from prismatic.vla.action_tokenizer import ActionTokenizer
-from prismatic.vla.constants import ACTION_DIM, ACTION_PROPRIO_NORMALIZATION_TYPE, ACTION_TOKEN_BEGIN_IDX, IGNORE_INDEX, NUM_ACTIONS_CHUNK, PROPRIO_DIM, STOP_INDEX, NUM_TOKENS
+from prismatic.vla.constants import (
+    ACTION_DIM,
+    ACTION_PROPRIO_NORMALIZATION_TYPE,
+    ACTION_TOKEN_BEGIN_IDX,
+    IGNORE_INDEX,
+    NUM_ACTIONS_CHUNK,
+    NUM_TOKENS,
+    PROPRIO_DIM,
+    STOP_INDEX,
+)
 from prismatic.vla.datasets.rlds import make_interleaved_dataset, make_single_dataset
 from prismatic.vla.datasets.rlds.oxe import OXE_NAMED_MIXTURES, get_oxe_dataset_kwargs_and_weights
-
 
 
 @dataclass
@@ -36,7 +44,6 @@ class RLDSBatchTransform:
     use_wrist_image: bool = False
     use_proprio: bool = False
     use_minivlm: bool = False
-
 
     def __call__(self, rlds_batch: Dict[str, Any]) -> Dict[str, Any]:
         """Converts a RLDS batch to the format expected by the OpenVLA collator/models."""
@@ -55,41 +62,43 @@ class RLDSBatchTransform:
             self.prompt_builder_fn = QwenPromptBuilder
             prompt_builder = self.prompt_builder_fn("openvla")
             # Get action chunk string
-            future_actions_string = self.action_tokenizer(future_actions,self.use_minivlm)
-            current_action_string = self.action_tokenizer(current_action,self.use_minivlm)
+            future_actions_string = self.action_tokenizer(future_actions, self.use_minivlm)
+            current_action_string = self.action_tokenizer(current_action, self.use_minivlm)
 
             action_chunk_string = [current_action_string] + future_actions_string
             flattened_action_chunk_string = [item for sublist in action_chunk_string for item in sublist]
-            action_chunk_len = len(flattened_action_chunk_string) 
+            action_chunk_len = len(flattened_action_chunk_string)
 
             conversation = [
                 {"from": "human", "value": f"What action should the robot take to {lang}?"},
-                {"from": "gpt", "value": ''},
+                {"from": "gpt", "value": ""},
             ]
 
             for turn in conversation:
                 prompt_builder.add_turn(turn["from"], turn["value"])
 
-            prompt = prompt_builder.get_prompt() #e.g. 'In: What action should the robot take to put both the cream cheese box and the butter in the basket?\nOut: 希</s>'
+            prompt = (
+                prompt_builder.get_prompt()
+            )  # e.g. 'In: What action should the robot take to put both the cream cheese box and the butter in the basket?\nOut: 希</s>'
             input_ids = self.base_tokenizer(prompt_builder.get_prompt(), add_special_tokens=True).input_ids
 
             if len(input_ids) >= 3:
-                del input_ids[-3] 
-                del input_ids[-2] 
-                del input_ids[-1] 
+                del input_ids[-3]
+                del input_ids[-2]
+                del input_ids[-1]
 
-            if NUM_TOKENS<len(flattened_action_chunk_string):
+            if NUM_TOKENS < len(flattened_action_chunk_string):
                 input_ids = input_ids + flattened_action_chunk_string[:NUM_TOKENS]
             else:
                 remaining_length = NUM_TOKENS - len(flattened_action_chunk_string)
                 extended_array = random.choices(flattened_action_chunk_string, k=remaining_length)
-                
+
                 input_ids = input_ids + flattened_action_chunk_string + extended_array
             labels = list(input_ids)
             action_chunk_len = NUM_TOKENS
 
         else:
-            future_actions_string = ''.join(self.action_tokenizer(future_actions, use_minivlm=False))
+            future_actions_string = "".join(self.action_tokenizer(future_actions, use_minivlm=False))
 
             # Get action chunk string
             current_action_string = self.action_tokenizer(current_action, use_minivlm=False)
@@ -107,10 +116,11 @@ class RLDSBatchTransform:
             # ]
             action_chunk_len = 1
 
-
             for turn in conversation:
                 prompt_builder.add_turn(turn["from"], turn["value"])
-            prompt = prompt_builder.get_prompt() #e.g. 'In: What action should the robot take to put both the cream cheese box and the butter in the basket?\nOut: 希</s>'
+            prompt = (
+                prompt_builder.get_prompt()
+            )  # e.g. 'In: What action should the robot take to put both the cream cheese box and the butter in the basket?\nOut: 希</s>'
             # Tokenize (w/ `base_tokenizer`)
             input_ids = self.base_tokenizer(prompt, add_special_tokens=True).input_ids
             labels = list(input_ids)
@@ -125,7 +135,9 @@ class RLDSBatchTransform:
         if not self.predict_stop_token:
             labels[-1] = IGNORE_INDEX
 
-        return_dict = dict(pixel_values=pixel_values, input_ids=input_ids, labels=labels, dataset_name=dataset_name, actions=actions)
+        return_dict = dict(
+            pixel_values=pixel_values, input_ids=input_ids, labels=labels, dataset_name=dataset_name, actions=actions
+        )
 
         # Add additional inputs
         if self.use_wrist_image:
@@ -141,8 +153,7 @@ class RLDSBatchTransform:
             return_dict["proprio"] = proprio
 
         return return_dict
-    
-    
+
 
 class RLDSDataset(IterableDataset):
     def __init__(

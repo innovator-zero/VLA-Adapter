@@ -152,6 +152,8 @@ data/
 rollouts/
 wandb/
 
-experiments/
-logs/
+experiments/checkpoints/
+experiments/logs/
 outputs/
+*back*
+*.out

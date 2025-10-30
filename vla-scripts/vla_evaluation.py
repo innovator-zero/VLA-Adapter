@@ -14,7 +14,6 @@ from prismatic.vla.constants import (
 )
 from prismatic.vla.datasets.rlds.utils.data_utils import NormalizationType
 
-
 OPENVLA_IMAGE_SIZE = 224
 
 
@@ -81,7 +80,6 @@ def resize_image_for_policy(img: np.ndarray, resize_size: Union[int, Tuple[int, 
     return img.numpy()
 
 
-
 def crop_and_resize(image: tf.Tensor, crop_scale: float, batch_size: int) -> tf.Tensor:
     """
     Center-crop an image and resize it back to original dimensions.
@@ -130,7 +128,6 @@ def crop_and_resize(image: tf.Tensor, crop_scale: float, batch_size: int) -> tf.
         image = image[0]
 
     return image
-
 
 
 def center_crop_image(image: Union[np.ndarray, Image.Image]) -> Image.Image:
@@ -185,9 +182,10 @@ def check_image_format(image: Any) -> None:
     )
 
 
-
 class DualSystemCalvinEvaluation(CalvinBaseModel):
-    def __init__(self, model, proprio_projector, noisy_action_projector, action_head, processor, use_x0_prediction=False):
+    def __init__(
+        self, model, proprio_projector, noisy_action_projector, action_head, processor, use_x0_prediction=False
+    ):
         super().__init__()
 
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -199,12 +197,14 @@ class DualSystemCalvinEvaluation(CalvinBaseModel):
         self.use_x0_prediction = use_x0_prediction
 
         # Set x0 prediction flag in action head if using diffusion
-        if self.action_head is not None and hasattr(self.action_head, 'use_x0_prediction'):
+        if self.action_head is not None and hasattr(self.action_head, "use_x0_prediction"):
             self.action_head.use_x0_prediction = use_x0_prediction
 
         self.temporal_size = 8
-        self.temporal_mask = torch.flip(torch.triu(torch.ones(self.temporal_size, self.temporal_size, dtype=torch.bool)), dims=[1]).numpy()
-        
+        self.temporal_mask = torch.flip(
+            torch.triu(torch.ones(self.temporal_size, self.temporal_size, dtype=torch.bool)), dims=[1]
+        ).numpy()
+
         self.action_buffer = np.zeros((self.temporal_mask.shape[0], self.temporal_mask.shape[0], 7))
         self.action_buffer_mask = np.zeros((self.temporal_mask.shape[0], self.temporal_mask.shape[0]), dtype=np.bool_)
 
@@ -224,8 +224,9 @@ class DualSystemCalvinEvaluation(CalvinBaseModel):
 
         self.hist_action = []
 
-        
-    def reset(self,):
+    def reset(
+        self,
+    ):
         """
         This is called
         """
@@ -234,7 +235,6 @@ class DualSystemCalvinEvaluation(CalvinBaseModel):
         self.action_buffer_mask = np.zeros((self.temporal_mask.shape[0], self.temporal_mask.shape[0]), dtype=np.bool_)
         self.obs_buffer = None
         self.hist_action = []
-
 
     def step(self, obs, instruction, step):
         """
@@ -245,8 +245,8 @@ class DualSystemCalvinEvaluation(CalvinBaseModel):
             action: predicted action
         """
         processed_images = []
-        image = obs["rgb_obs"]['rgb_static']  # {ndarray: (200, 200, 3)}
-        gripper_image = obs["rgb_obs"]['rgb_gripper']  # {ndarray: (84, 84, 3)}
+        image = obs["rgb_obs"]["rgb_static"]  # {ndarray: (200, 200, 3)}
+        gripper_image = obs["rgb_obs"]["rgb_gripper"]  # {ndarray: (84, 84, 3)}
         # gripper_image1 = self.processor.image_processor.apply_transform(Image.fromarray(gripper_image))[:3].unsqueeze(0).to(self.dual_sys.device)
 
         # tactile_image = None
@@ -272,8 +272,8 @@ class DualSystemCalvinEvaluation(CalvinBaseModel):
         processed_images.append(gripper_pil_image)
         primary_image = processed_images.pop(0)
         # prompt = get_openvla_prompt(instruction)
-        prompt = f'<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nWhat action should the robot take to {instruction.lower()}?<|im_end|>\n<|im_start|>assistant\n'
-        
+        prompt = f"<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nWhat action should the robot take to {instruction.lower()}?<|im_end|>\n<|im_start|>assistant\n"
+
         inputs = self.processor(prompt, primary_image).to(self.OFT.device, dtype=torch.bfloat16)
         all_wrist_inputs = [self.processor(prompt, processed_images).to(self.OFT.device, dtype=torch.bfloat16)]
         # inputs = self.processor(prompt, Image.fromarray(image)).to(self.OFT.device, dtype=torch.bfloat16)
@@ -284,9 +284,11 @@ class DualSystemCalvinEvaluation(CalvinBaseModel):
         inputs["pixel_values"] = torch.cat([primary_pixel_values] + all_wrist_pixel_values, dim=1)
 
         # proprio_state = obs['robot_obs'][-8:]
-        
-        proprio_state = np.concatenate([obs['robot_obs'][:7], obs['robot_obs'][-1:]])  # EE position (3), EE orientation in euler angles (3), gripper width (1), joint positions (7), gripper action (1)
-        proprio_norm_stats = self.OFT.norm_stats['calvin_abc_rlds']['proprio']
+
+        proprio_state = np.concatenate(
+            [obs["robot_obs"][:7], obs["robot_obs"][-1:]]
+        )  # EE position (3), EE orientation in euler angles (3), gripper width (1), joint positions (7), gripper action (1)
+        proprio_norm_stats = self.OFT.norm_stats["calvin_abc_rlds"]["proprio"]
         # proprio_norm_stats = self.OFT.norm_stats['calvin']['proprio']
 
         obs["state"] = normalize_proprio(proprio_state, proprio_norm_stats)
@@ -294,7 +296,7 @@ class DualSystemCalvinEvaluation(CalvinBaseModel):
 
         # state = torch.from_numpy(obs['robot_obs']).to(self.dual_sys.device, dtype=torch.float)
         # state = torch.cat([state[:6], state[[-1]]], dim=-1).unsqueeze(0)\
-        with torch.no_grad(): 
+        with torch.no_grad():
             action, _ = self.OFT.predict_action(
                 **inputs,
                 unnorm_key="calvin_abc_rlds",
@@ -307,9 +309,6 @@ class DualSystemCalvinEvaluation(CalvinBaseModel):
                 use_film=False,
             )
 
-
-
-        action[:,-1] = 1 - action[:,-1]
-        
+        action[:, -1] = 1 - action[:, -1]
 
         return [action[i] for i in range(min(len(action), 8))]

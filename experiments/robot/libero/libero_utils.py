@@ -46,7 +46,7 @@ def get_libero_wrist_image(obs):
 
 def save_rollout_video(rollout_images, idx, success, task_description, log_file=None, save_version=None):
     """Saves an MP4 replay of an episode."""
-    rollout_dir = f"./rollouts/{save_version}/{DATE}"
+    rollout_dir = f"experiments/rollouts/{save_version}/{DATE}"
     os.makedirs(rollout_dir, exist_ok=True)
     processed_task_description = task_description.lower().replace(" ", "_").replace("\n", "_").replace(".", "_")[:50]
     mp4_path = f"{rollout_dir}/{DATE_TIME}--episode={idx}--success={success}--task={processed_task_description}.mp4"

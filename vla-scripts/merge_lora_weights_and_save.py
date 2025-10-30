@@ -1,4 +1,3 @@
-
 """
 Loads a checkpoint that only has a LoRA adapter (no merged model) and merges the adapter
 into the base VLA-Adapter model. Saves the final checkpoint in the same directory.
@@ -26,7 +25,6 @@ from prismatic.extern.hf.processing_prismatic import PrismaticImageProcessor, Pr
 from prismatic.models import load, load_vla
 
 
-
 @dataclass
 class ConvertConfig:
     # fmt: off
@@ -35,7 +33,6 @@ class ConvertConfig:
     lora_finetuned_checkpoint_dir: Union[str, Path] = ""     # Checkpoint directory containing the LoRA adapter
     vlm_path: Union[str, Path] = "" 
     use_minivla: bool = False                        # 
-
 
     # fmt: on
 
@@ -49,12 +46,12 @@ def main(cfg: ConvertConfig) -> None:
     AutoModelForVision2Seq.register(OpenVLAConfig, OpenVLAForActionPrediction)
 
     if cfg.use_minivla:
-        hf_token = ''
+        hf_token = ""
         vlm = load_vla(
             cfg.vlm_path,
             hf_token=hf_token,
             load_for_training=True,
-            )
+        )
         config = AutoConfig.from_pretrained("../pretrained_models/configs/config.json")
         vla = AutoModelForVision2Seq.from_config(config, torch_dtype=torch.bfloat16)
         # for name, param in model.named_parameters():
@@ -78,10 +75,10 @@ def main(cfg: ConvertConfig) -> None:
                         new_k = new_k.replace(old, new)
                 new_state_dict[new_k] = v
             return new_state_dict
-        
+
         old_state_dict = vlm.state_dict()
         RAW_STATE_DICT = rename_state_dict_keys(old_state_dict, replace_map)
-    
+
         missing_keys, unexpected_keys = vla.load_state_dict(RAW_STATE_DICT, strict=False)
     else:
         # Load Model using HF AutoClasses

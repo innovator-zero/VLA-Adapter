@@ -140,7 +140,7 @@ def get_action(
                 proprio_projector=proprio_projector,
                 noisy_action_projector=noisy_action_projector,
                 use_film=use_film,
-                use_minivlm=use_minivlm
+                use_minivlm=use_minivlm,
             )
         else:
             raise ValueError(f"Unsupported model family: {cfg.model_family}")

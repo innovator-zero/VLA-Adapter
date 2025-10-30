@@ -62,7 +62,10 @@ def load(
         overwatch.info(f"Loading from local path `{(run_dir := Path(model_id_or_path))}`")
 
         # Get paths for `config.json` and pretrained checkpoint
-        config_json, checkpoint_pt = run_dir / "config.json", run_dir / "checkpoints" / "step-020792-epoch-01-loss=0.5268.pt"
+        config_json, checkpoint_pt = (
+            run_dir / "config.json",
+            run_dir / "checkpoints" / "step-020792-epoch-01-loss=0.5268.pt",
+        )
         assert config_json.exists(), f"Missing `config.json` for `{run_dir = }`"
         assert checkpoint_pt.exists(), f"Missing checkpoint for `{run_dir = }`"
     else:
@@ -99,9 +102,7 @@ def load(
     # Load Vision Backbone
     overwatch.info(f"Loading Vision Backbone [bold]{model_cfg['vision_backbone_id']}[/]")
     vision_backbone, image_transform = get_vision_backbone_and_transform(
-        model_cfg["vision_backbone_id"],
-        model_cfg["image_resize_strategy"],
-        image_sequence_len
+        model_cfg["vision_backbone_id"], model_cfg["image_resize_strategy"], image_sequence_len
     )
 
     # Load LLM Backbone --> note `inference_mode = True` by default when calling `load()`

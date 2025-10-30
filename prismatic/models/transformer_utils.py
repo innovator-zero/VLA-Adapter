@@ -19,9 +19,11 @@ import torch.nn.functional as F
 from torch.autograd import Function
 from torch.autograd.function import once_differentiable
 from torch.nn.init import constant_, xavier_uniform_
+
 # from einops import rearrange, repeat
 # from torch import einsum
 # from einops_exts import rearrange_many, repeat_many
+
 
 # helpers
 def _is_power_of_2(n):
@@ -38,16 +40,13 @@ class RGBDFuser(nn.Module):
         self.patch_num = patch_num
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
 
-        self.channel_selection = nn.Sequential(
-                            nn.Linear(out_channels, out_channels),
-                            nn.Sigmoid()
-                            )
+        self.channel_selection = nn.Sequential(nn.Linear(out_channels, out_channels), nn.Sigmoid())
 
     def forward(self, inputs_rgb: torch.Tensor, inputs_depth: torch.Tensor) -> torch.Tensor:
         inputs = torch.cat([inputs_rgb, inputs_depth], dim=-1)[:, 1:]
-        inputs = rearrange(inputs, 'b (h w) d -> b d h w', h=self.patch_num, w=self.patch_num)
+        inputs = rearrange(inputs, "b (h w) d -> b d h w", h=self.patch_num, w=self.patch_num)
         feature = self.conv(inputs)
-        feature = rearrange(feature, 'b d h w -> b (h w) d')
+        feature = rearrange(feature, "b d h w -> b (h w) d")
         selection_weights = self.channel_selection(feature.mean(dim=1))
 
         # channel-wise multiply
@@ -60,21 +59,21 @@ class TransFuser(nn.Module):
     def __init__(self, vis_channels: int, depth_channels: int, tgt_channels: int, num_heads: int) -> None:
         super().__init__()
         self.attn = CrossAttentionBlock(
-            v_dim = tgt_channels,
-            l_dim = tgt_channels,
-            embed_dim = tgt_channels,
-            num_heads = num_heads,
+            v_dim=tgt_channels,
+            l_dim=tgt_channels,
+            embed_dim=tgt_channels,
+            num_heads=num_heads,
         )
 
         self.proj_vis = nn.Linear(vis_channels, tgt_channels)
         self.proj_depth = nn.Linear(depth_channels, tgt_channels)
-
 
     def forward(self, inputs_rgb: torch.Tensor, inputs_depth: torch.Tensor) -> torch.Tensor:
         concat_feature = torch.cat([self.proj_vis(inputs_rgb), self.proj_depth(inputs_depth)], dim=1)
         concat_feature = self.attn(concat_feature, concat_feature)
 
         return concat_feature
+
 
 # RMSNorm -- Better, simpler alternative to LayerNorm
 class RMSNorm(nn.Module):
@@ -112,7 +111,7 @@ class MAPAttention(nn.Module):
         self.q, self.kv = nn.Linear(embed_dim, embed_dim, bias=False), nn.Linear(embed_dim, 2 * embed_dim, bias=False)
         self.proj = nn.Linear(embed_dim, embed_dim)
 
-    def forward(self, seed: torch.Tensor, x: torch.Tensor, attention_mask = None) -> torch.Tensor:
+    def forward(self, seed: torch.Tensor, x: torch.Tensor, attention_mask=None) -> torch.Tensor:
         (B_s, K, C_s), (B_x, N, C_x) = seed.shape, x.shape
         assert C_s == C_x, "Seed vectors and pool inputs must have the same embedding dimensionality!"
 
@@ -125,12 +124,9 @@ class MAPAttention(nn.Module):
         scores = q @ (k.transpose(-2, -1) * self.scale)
         # print(scores.shape)
         if attention_mask is not None:
-            attention_mask = (
-                attention_mask[None, None, :, :].repeat(1, self.n_heads, 1, 1) #.flatten(0, 1)
-            )
+            attention_mask = attention_mask[None, None, :, :].repeat(1, self.n_heads, 1, 1)  # .flatten(0, 1)
             scores.masked_fill_(attention_mask == 0, float("-inf"))
         attn = scores.softmax(dim=-1)
-        
 
         vals = (attn @ v).transpose(1, 2).reshape(B_s, K, C_s)
 
@@ -142,7 +138,7 @@ class MAPBlock(nn.Module):
     def __init__(
         self,
         n_latents: int,
-        vis_dim: int, 
+        vis_dim: int,
         embed_dim: int,
         n_heads: int,
         mlp_ratio: float = 4.0,
@@ -176,13 +172,13 @@ class MAPBlock(nn.Module):
             nn.Linear(int(mlp_ratio * self.embed_dim), self.embed_dim),
         )
 
-    def forward(self, x: torch.Tensor, mask = None, init_embed = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask=None, init_embed=None) -> torch.Tensor:
         latents = repeat(self.latents, "n_latents d -> bsz n_latents d", bsz=x.shape[0])
         latents = latents + init_embed.unsqueeze(1) if init_embed is not None else latents
         latents = self.attn_norm(latents + self.attn(latents, self.projection(x), mask))
         latents = self.mlp_norm(latents + self.mlp(latents))
         return latents.squeeze(dim=1)
-        
+
 
 class CrossAttention(nn.Module):
     def __init__(self, v_dim, l_dim, embed_dim, num_heads, dropout=0.1, cfg=None, RoPE=False):
@@ -228,7 +224,6 @@ class CrossAttention(nn.Module):
         nn.init.xavier_uniform_(self.out_v_proj.weight)
         self.out_v_proj.bias.data.fill_(0)
 
-
     def forward(self, v, l, attention_mask_v=None, attention_mask_l=None):
         """_summary_
 
@@ -242,7 +237,7 @@ class CrossAttention(nn.Module):
             _type_: _description_
         """
         bsz, tgt_len, _ = v.size()
- 
+
         query_states = self.v_proj(v) * self.scale
         key_states = self.l_proj(l)
 
@@ -276,9 +271,7 @@ class CrossAttention(nn.Module):
 
         # mask language for vision
         if attention_mask_l is not None:
-            attention_mask_l = (
-                attention_mask_l[:, None, None, :].repeat(1, self.num_heads, 1, 1).flatten(0, 1)
-            )
+            attention_mask_l = attention_mask_l[:, None, None, :].repeat(1, self.num_heads, 1, 1).flatten(0, 1)
             attn_weights.masked_fill_(attention_mask_l == 0, float("-inf"))
         attn_weights_v = attn_weights.softmax(dim=-1)
 
@@ -288,7 +281,6 @@ class CrossAttention(nn.Module):
             attn_probs_v = attn_weights_v
 
         attn_output_v = torch.bmm(attn_probs_v, value_l_states)
-
 
         if attn_output_v.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
             raise ValueError(
@@ -302,7 +294,7 @@ class CrossAttention(nn.Module):
         attn_output_v = self.out_v_proj(attn_output_v)
 
         return attn_output_v
-        
+
 
 class CrossAttentionBlock(nn.Module):
     def __init__(
@@ -336,48 +328,36 @@ class CrossAttentionBlock(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.gamma_v = nn.Parameter(init_values * torch.ones((v_dim)), requires_grad=True)
 
-
     def forward(self, v, l, attention_mask_v=None, attention_mask_l=None):
         org_v = v
         v = self.layer_norm_v(v)
         l = self.layer_norm_l(l)
-        delta_v = self.attn(
-            v, l, attention_mask_v=attention_mask_v, attention_mask_l=attention_mask_l
-        )
+        delta_v = self.attn(v, l, attention_mask_v=attention_mask_v, attention_mask_l=attention_mask_l)
         v = org_v + self.drop_path(self.gamma_v * delta_v)
 
         return v
 
 
-
-def FeedForward(dim, mult = 4):
+def FeedForward(dim, mult=4):
     inner_dim = int(dim * mult)
     return nn.Sequential(
-        nn.LayerNorm(dim),
-        nn.Linear(dim, inner_dim, bias = False),
-        nn.GELU(),
-        nn.Linear(inner_dim, dim, bias = False)
+        nn.LayerNorm(dim), nn.Linear(dim, inner_dim, bias=False), nn.GELU(), nn.Linear(inner_dim, dim, bias=False)
     )
 
+
 class PerceiverAttention(nn.Module):
-    def __init__(
-        self,
-        *,
-        dim,
-        dim_head = 64,
-        heads = 8
-    ):
+    def __init__(self, *, dim, dim_head=64, heads=8):
         super().__init__()
-        self.scale = dim_head ** -0.5
+        self.scale = dim_head**-0.5
         self.heads = heads
         inner_dim = dim_head * heads
 
         self.norm_media = nn.LayerNorm(dim)
         self.norm_latents = nn.LayerNorm(dim)
 
-        self.to_q = nn.Linear(dim, inner_dim, bias = False)
-        self.to_kv = nn.Linear(dim, inner_dim * 2, bias = False)
-        self.to_out = nn.Linear(inner_dim, dim, bias = False)
+        self.to_q = nn.Linear(dim, inner_dim, bias=False)
+        self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
+        self.to_out = nn.Linear(inner_dim, dim, bias=False)
 
     def forward(self, x, latents):
         """
@@ -395,23 +375,24 @@ class PerceiverAttention(nn.Module):
         q = self.to_q(latents)
 
         # the paper differs from Perceiver in which they also concat the key / values derived from the latents to be attended to
-        kv_input = torch.cat((x, latents), dim = -2)
-        k, v = self.to_kv(kv_input).chunk(2, dim = -1)
+        kv_input = torch.cat((x, latents), dim=-2)
+        k, v = self.to_kv(kv_input).chunk(2, dim=-1)
 
-        q, k, v = rearrange_many((q, k, v), 'b t n (h d) -> b h t n d', h = h)
+        q, k, v = rearrange_many((q, k, v), "b t n (h d) -> b h t n d", h=h)
 
         q = q * self.scale
 
         # attention
 
-        sim = einsum('... i d, ... j d  -> ... i j', q, k)
+        sim = einsum("... i d, ... j d  -> ... i j", q, k)
 
-        sim = sim - sim.amax(dim = -1, keepdim = True).detach()
-        attn = sim.softmax(dim = -1)
+        sim = sim - sim.amax(dim=-1, keepdim=True).detach()
+        attn = sim.softmax(dim=-1)
 
-        out = einsum('... i j, ... j d -> ... i d', attn, v)
-        out = rearrange(out, 'b h t n d -> b t n (h d)', h = h)
+        out = einsum("... i j, ... j d -> ... i d", attn, v)
+        out = rearrange(out, "b h t n d -> b t n (h d)", h=h)
         return self.to_out(out)
+
 
 class PerceiverResampler(nn.Module):
     def __init__(
@@ -420,11 +401,11 @@ class PerceiverResampler(nn.Module):
         dim,
         vis_dim,
         depth,
-        dim_head = 64,
-        heads = 8,
-        num_latents = 64,
-        num_media_embeds = 4,
-        ff_mult = 4,
+        dim_head=64,
+        heads=8,
+        num_latents=64,
+        num_media_embeds=4,
+        ff_mult=4,
     ):
         super().__init__()
         self.latents = nn.Parameter(torch.randn(num_latents, dim))
@@ -435,22 +416,23 @@ class PerceiverResampler(nn.Module):
 
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                PerceiverAttention(dim = dim, dim_head = dim_head, heads = heads),
-                FeedForward(dim = dim, mult = ff_mult)
-            ]))
+            self.layers.append(
+                nn.ModuleList(
+                    [PerceiverAttention(dim=dim, dim_head=dim_head, heads=heads), FeedForward(dim=dim, mult=ff_mult)]
+                )
+            )
 
         self.norm = nn.LayerNorm(dim)
 
     def forward(self, x):
         if x.ndim == 3:
-            x = rearrange(x, 'b n d -> b 1 n d')
+            x = rearrange(x, "b n d -> b 1 n d")
 
         times = x.shape[1]
         x = x + self.media_pos_emb[:times]
         x = self.proj(x)
 
-        latents = repeat(self.latents, 'n d -> b m n d', b = x.shape[0], m = self.num_media_embeds)
+        latents = repeat(self.latents, "n d -> b m n d", b=x.shape[0], m=self.num_media_embeds)
 
         for attn, ff in self.layers:
             latents = attn(x, latents) + latents

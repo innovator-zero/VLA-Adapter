@@ -21,9 +21,7 @@ class CalvinEnvWrapperRaw(gym.Wrapper):
             observation_sapce: {'rgb_obs': ['rgb_static', 'rgb_gripper'], 'depth_obs': [], 'state_obs': ['robot_obs'], 'actions': ['rel_actions'], 'language': ['language']}
         """
         # self.set_egl_device(device)
-        env = get_env(
-            abs_datasets_dir, show_gui=show_gui, obs_space=observation_space, **kwargs
-        )
+        env = get_env(abs_datasets_dir, show_gui=show_gui, obs_space=observation_space, **kwargs)
         super(CalvinEnvWrapperRaw, self).__init__(env)
         self.observation_space_keys = observation_space
         self.device = device
@@ -52,7 +50,7 @@ class CalvinEnvWrapperRaw(gym.Wrapper):
         self, action_tensor: torch.Tensor
     ) -> Tuple[Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor]]], int, bool, Dict]:
         if self.relative_actions:
-            action = action_tensor#.squeeze().cpu().detach().numpy()
+            action = action_tensor  # .squeeze().cpu().detach().numpy()
             assert len(action) == 7
         else:
             if action_tensor.shape[-1] == 7:
@@ -65,7 +63,7 @@ class CalvinEnvWrapperRaw(gym.Wrapper):
             action = np.split(action_tensor, slice_ids)
         o, r, d, i = self.env.step(action)
 
-        obs = o # use raw observation
+        obs = o  # use raw observation
         return obs, r, d, i
 
     def reset(
@@ -86,20 +84,17 @@ class CalvinEnvWrapperRaw(gym.Wrapper):
         else:
             obs = self.env.reset()
 
-        return obs # use raw observation
+        return obs  # use raw observation
 
     def get_info(self):
         return self.env.get_info()
 
     def get_obs(self):
         obs = self.env.get_obs()
-        return obs # use raw observation
-
+        return obs  # use raw observation
 
     def action_space(self):
         return self.env.action_space
 
-
     def observation_space(self):
         return self.env.observation_space
-    

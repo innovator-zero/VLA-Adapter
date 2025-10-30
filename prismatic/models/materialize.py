@@ -118,7 +118,7 @@ def get_vision_backbone_and_transform(
 #     *,
 #     checkpoint_path: Optional[str] = None,
 #     pretrained: Optional[bool] = None,
-#     **extra_kwargs: Any,  
+#     **extra_kwargs: Any,
 # ) -> Tuple[VisionBackbone, ImageTransform]:
 #     """Instantiate a Vision Backbone, returning both the nn.Module wrapper class and default Image Transform."""
 #     if vision_backbone_id not in VISION_BACKBONES:

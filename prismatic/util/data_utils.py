@@ -113,8 +113,8 @@ class PaddedCollatorForActionPrediction:
         input_ids = pad_sequence(input_ids, batch_first=True, padding_value=self.pad_token_id)
         labels = pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
 
-
         if self.padding_side == "left":
+
             def left_pad_sequence(sequences, padding_value):
                 max_len = max(seq.size(0) for seq in sequences)
                 padded = []
@@ -130,7 +130,6 @@ class PaddedCollatorForActionPrediction:
         else:
             input_ids = pad_sequence(input_ids, batch_first=True, padding_value=self.pad_token_id)
             labels = pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
-
 
         # Truncate (if necessary)
         input_ids, labels = input_ids[:, : self.model_max_length], labels[:, : self.model_max_length]

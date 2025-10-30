@@ -220,9 +220,9 @@ def find_checkpoint_file(pretrained_checkpoint: str, file_pattern: str) -> str:
             full_path = os.path.join(pretrained_checkpoint, filename)
             checkpoint_files.append(full_path)
 
-    assert len(checkpoint_files) == 1, (
-        f"Expected exactly 1 {file_pattern} checkpoint but found {len(checkpoint_files)} in directory: {pretrained_checkpoint}"
-    )
+    assert (
+        len(checkpoint_files) == 1
+    ), f"Expected exactly 1 {file_pattern} checkpoint but found {len(checkpoint_files)} in directory: {pretrained_checkpoint}"
 
     return checkpoint_files[0]
 
@@ -248,6 +248,7 @@ def load_component_state_dict(checkpoint_path: str) -> Dict[str, torch.Tensor]:
             new_state_dict[k] = v
 
     return new_state_dict
+
 
 def load_component_state_dict_v1(checkpoint_path: str) -> Dict[str, torch.Tensor]:
     """
@@ -352,7 +353,8 @@ def _apply_film_to_vla(vla: torch.nn.Module, cfg: Any) -> torch.nn.Module:
 
     # Create and apply FiLMed vision backbone
     new_vision_backbone = FiLMedPrismaticVisionBackbone(
-        vision_backbone=vla.vision_backbone, llm_dim=vla.llm_dim,
+        vision_backbone=vla.vision_backbone,
+        llm_dim=vla.llm_dim,
     )
     vla.model.vision_backbone = new_vision_backbone
 
@@ -503,8 +505,8 @@ def get_action_head(cfg: Any, llm_dim: int) -> Union[L1RegressionActionHead]:
     # Initialize appropriate action head based on configuration
     if cfg.use_l1_regression:
         action_head = L1RegressionActionHead(
-            input_dim=llm_dim, 
-            hidden_dim=llm_dim, 
+            input_dim=llm_dim,
+            hidden_dim=llm_dim,
             action_dim=ACTION_DIM,
             use_pro_version=cfg.use_pro_version,
         )
@@ -780,7 +782,7 @@ def get_vla_action(
         if not use_minivlm:
             prompt = f"In: What action should the robot take to {task_label.lower()}?\nOut:"
         else:
-            prompt = f'<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nWhat action should the robot take to {task_label.lower()}?<|im_end|>\n<|im_start|>assistant\n'
+            prompt = f"<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nWhat action should the robot take to {task_label.lower()}?<|im_end|>\n<|im_start|>assistant\n"
 
         # Process primary image
         inputs = processor(prompt, primary_image).to(DEVICE, dtype=torch.bfloat16)
@@ -803,7 +805,6 @@ def get_vla_action(
             obs["state"] = normalize_proprio(proprio, proprio_norm_stats)
             proprio = obs["state"]
 
-        
         # Generate action
         if action_head is None:
             # Standard VLA output (single-image inputs, discrete actions)

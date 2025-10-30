@@ -27,11 +27,7 @@ from transformers import AutoConfig, AutoImageProcessor, AutoModelForVision2Seq,
 from transformers.modeling_outputs import CausalLMOutputWithPast
 import wandb
 
-from experiments.robot.openvla_utils import (
-    check_model_logic_mismatch,
-    model_is_on_hf_hub,
-    update_auto_map
-)
+from experiments.robot.openvla_utils import check_model_logic_mismatch, model_is_on_hf_hub, update_auto_map
 from prismatic.extern.hf.configuration_prismatic import OpenVLAConfig
 from prismatic.extern.hf.modeling_prismatic import OpenVLAForActionPrediction
 from prismatic.extern.hf.processing_prismatic import PrismaticImageProcessor, PrismaticProcessor
@@ -43,7 +39,7 @@ from prismatic.training.train_utils import (
     compute_actions_l1_loss,
     compute_token_accuracy,
     get_current_action_mask,
-    get_next_actions_mask
+    get_next_actions_mask,
 )
 from prismatic.util.data_utils import PaddedCollatorForActionPrediction
 from prismatic.vla.action_tokenizer import ActionTokenizer
@@ -52,16 +48,15 @@ from prismatic.vla.constants import (
     ACTION_PROPRIO_NORMALIZATION_TYPE,
     NUM_ACTIONS_CHUNK,
     PROPRIO_DIM,
-    NUM_TOKENS
+    NUM_TOKENS,
 )
 from prismatic.vla.datasets import RLDSDataset, RLDSBatchTransform
 from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
 from prismatic.models import load, load_vla
 
-
-
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 
 @dataclass
 class FinetuneConfig:
@@ -128,7 +123,6 @@ class FinetuneConfig:
     # fmt: on
 
 
-
 def remove_ddp_in_checkpoint(state_dict) -> dict:
     """
     Removes the 'module.' prefix from parameter names in a PyTorch model state dictionary that was saved using
@@ -154,7 +148,6 @@ def remove_ddp_in_checkpoint(state_dict) -> dict:
     return new_state_dict
 
 
-
 def get_run_id(cfg) -> str:
     """
     Generates or retrieves an identifier string for an experiment run.
@@ -172,24 +165,23 @@ def get_run_id(cfg) -> str:
         # Override run ID with the previous resumed run's ID
         run_id = cfg.config_file_path.split("/")[-1]
         # Remove the "--XXX_chkpt" suffix from the run ID if it exists
-        if "chkpt" in run_id.split("--")[-1]:
-            run_id = "--".join(run_id.split("--")[:-1])
+        # if "chkpt" in run_id.split("--")[-1]:
+        #     run_id = "--".join(run_id.split("--")[:-1])
     else:
-        run_id = (
-            f"{cfg.config_file_path.split('/')[-1]}+{cfg.dataset_name}"
-            f"+b{cfg.batch_size * cfg.grad_accumulation_steps}"
-            f"+lr-{cfg.learning_rate}"
-        )
-        if cfg.use_fz:
-            run_id += f"+frozen+dropout-{cfg.lora_dropout}"
-        if cfg.use_lora:
-            run_id += f"+lora-r{cfg.lora_rank}+dropout-{cfg.lora_dropout}"
-        if cfg.image_aug:
-            run_id += "--image_aug"
+        # run_id = (
+        #     f"{cfg.vla_path.split('/')[-1]}+{cfg.dataset_name}"
+        #     f"+b{cfg.batch_size * cfg.grad_accumulation_steps}"
+        #     f"+lr-{cfg.learning_rate}"
+        # )
+        dataname = "_".join(cfg.dataset_name.split("_")[:-2])
+        run_id = f"{dataname}" f"+b{cfg.batch_size * cfg.grad_accumulation_steps}" f"+lr-{cfg.learning_rate}"
+        # if cfg.use_lora:
+        #     run_id += f"+lora-r{cfg.lora_rank}+dropout-{cfg.lora_dropout}"
+        # if cfg.image_aug:
+        #     run_id += "--image_aug"
         if cfg.run_id_note is not None:
             run_id += f"--{cfg.run_id_note}"
     return run_id
-
 
 
 def load_checkpoint(module_name: str, path: str, step: int, device: str = "cpu") -> dict:
@@ -211,7 +203,6 @@ def load_checkpoint(module_name: str, path: str, step: int, device: str = "cpu")
     return remove_ddp_in_checkpoint(state_dict)
 
 
-
 def wrap_ddp(module: nn.Module, device_id: int, find_unused: bool = False) -> DDP:
     """
     Wrap a module with DistributedDataParallel.
@@ -227,7 +218,6 @@ def wrap_ddp(module: nn.Module, device_id: int, find_unused: bool = False) -> DD
     return DDP(module, device_ids=[device_id], find_unused_parameters=find_unused, gradient_as_bucket_view=True)
 
 
-
 def count_parameters(module: nn.Module, name: str) -> None:
     """
     Counts and prints the number of trainable parameters in a module.
@@ -240,9 +230,8 @@ def count_parameters(module: nn.Module, name: str) -> None:
         None.
     """
     num_params = sum(p.numel() for p in module.parameters() if p.requires_grad)
-    
-    print(f"# trainable params in {name}: {num_params}")
 
+    print(f"# trainable params in {name}: {num_params}")
 
 
 def init_module(
@@ -275,14 +264,13 @@ def init_module(
     if cfg.resume:
         state_dict = load_checkpoint(module_name, cfg.resum_vla_path, cfg.resume_step)
         module.load_state_dict(state_dict)
-        print('loaded!!!!!!!!!')
+        print("loaded!!!!!!!!!")
 
     if to_bf16:
         module = module.to(torch.bfloat16)
     module = module.to(device_id)
 
     return wrap_ddp(module, device_id, find_unused_params)
-
 
 
 def run_forward_pass(
@@ -298,7 +286,7 @@ def run_forward_pass(
     num_patches,
     compute_diffusion_l1=False,
     use_pro_version=True,
-    cfg=None
+    cfg=None,
 ) -> Tuple[torch.Tensor, Dict[str, float]]:
     """
     Compute model forward pass and metrics for both training and validation.
@@ -345,10 +333,10 @@ def run_forward_pass(
             noisy_action_projector=None,
             diffusion_timestep_embeddings=None,
             use_film=use_film,
-            )
+        )
 
     # Get action masks needed for logging
-    ground_truth_token_ids = batch["labels"][:,1:].to(device_id)
+    ground_truth_token_ids = batch["labels"][:, 1:].to(device_id)
     current_action_mask = get_current_action_mask(ground_truth_token_ids)
     next_actions_mask = get_next_actions_mask(ground_truth_token_ids)
 
@@ -358,28 +346,18 @@ def run_forward_pass(
         predicted_token_ids = output.logits[:, num_patches:-1].argmax(dim=2)
 
         curr_action_accuracy = compute_token_accuracy(
-            predicted_token_ids, 
-            ground_truth_token_ids, 
-            mask=current_action_mask
-            )
+            predicted_token_ids, ground_truth_token_ids, mask=current_action_mask
+        )
         curr_action_l1_loss = compute_actions_l1_loss(
-            action_tokenizer, 
-            predicted_token_ids, 
-            ground_truth_token_ids, 
-            mask=current_action_mask
-            )
+            action_tokenizer, predicted_token_ids, ground_truth_token_ids, mask=current_action_mask
+        )
         next_actions_accuracy = compute_token_accuracy(
-            predicted_token_ids, 
-            ground_truth_token_ids, 
-            mask=next_actions_mask
-            )
+            predicted_token_ids, ground_truth_token_ids, mask=next_actions_mask
+        )
         next_actions_l1_loss = compute_actions_l1_loss(
-            action_tokenizer, 
-            predicted_token_ids, 
-            ground_truth_token_ids, 
-            mask=next_actions_mask
-            )
-        
+            action_tokenizer, predicted_token_ids, ground_truth_token_ids, mask=next_actions_mask
+        )
+
         metrics.update(
             {
                 "loss_value": loss.item(),  # Detached value for logging
@@ -387,14 +365,14 @@ def run_forward_pass(
                 "curr_action_l1_loss": curr_action_l1_loss.item(),
                 "next_actions_accuracy": next_actions_accuracy.item(),
                 "next_actions_l1_loss": next_actions_l1_loss.item(),
-                }
-            )
-        
+            }
+        )
+
     # Compute metrics for continuous action representations (L1 regression)
     else:
         # Get last layer hidden states
         multi_layer_hidden_states = []
-        
+
         for item in output.hidden_states[0:]:
             # last_hidden_states = output.hidden_states[-1]  # (B, seq_len, D)
             # Get hidden states for text portion of prompt+response (after the vision patches)
@@ -402,18 +380,22 @@ def run_forward_pass(
             # Get hidden states for action portion of response
             batch_size = batch["input_ids"].shape[0]
             # actions_hidden_states = text_hidden_states[:, -1, :].reshape(batch_size, 1, -1).to(torch.bfloat16)
-            actions_hidden_states = text_hidden_states[current_action_mask | next_actions_mask].reshape(batch_size, 1,NUM_TOKENS, -1).to(torch.bfloat16)
-            task_latten_states = item[:, :num_patches].reshape(batch_size, 1, num_patches , -1)
-            all_hidden_states = torch.cat((task_latten_states, actions_hidden_states),2)
+            actions_hidden_states = (
+                text_hidden_states[current_action_mask | next_actions_mask]
+                .reshape(batch_size, 1, NUM_TOKENS, -1)
+                .to(torch.bfloat16)
+            )
+            task_latten_states = item[:, :num_patches].reshape(batch_size, 1, num_patches, -1)
+            all_hidden_states = torch.cat((task_latten_states, actions_hidden_states), 2)
             multi_layer_hidden_states.append(all_hidden_states)
-        multi_layer_hidden_states = torch.cat(multi_layer_hidden_states, dim = 1)
+        multi_layer_hidden_states = torch.cat(multi_layer_hidden_states, dim=1)
 
         predicted_actions = action_head.module.predict_action(
             multi_layer_hidden_states,
             proprio=batch["proprio"] if use_proprio else None,
             proprio_projector=proprio_projector if use_proprio else None,
             phase=cfg.phase,
-            )
+        )
 
         loss = torch.nn.L1Loss()(predicted_actions, ground_truth_actions)
 
@@ -433,7 +415,7 @@ def run_forward_pass(
             curr_action_l1_loss = torch.nn.L1Loss()(ground_truth_curr_action, predicted_curr_action)
             next_actions_l1_loss = torch.nn.L1Loss()(ground_truth_next_actions, predicted_next_actions)
             if compute_diffusion_l1:
-                print('curr: ',curr_action_l1_loss.item())
+                print("curr: ", curr_action_l1_loss.item())
                 # print('next: ',next_actions_l1_loss.item())
 
             metrics.update(
@@ -445,7 +427,6 @@ def run_forward_pass(
 
     # Return both the loss tensor (with gradients) and the metrics dictionary (with detached values)
     return loss, metrics
-
 
 
 def compute_smoothened_metrics(metrics_deques) -> dict:
@@ -463,7 +444,6 @@ def compute_smoothened_metrics(metrics_deques) -> dict:
         if deque and len(deque) > 0:
             smoothened_metrics[name] = sum(deque) / len(deque)
     return smoothened_metrics
-
 
 
 def log_metrics_to_wandb(metrics, prefix, step, wandb_entity) -> None:
@@ -490,7 +470,6 @@ def log_metrics_to_wandb(metrics, prefix, step, wandb_entity) -> None:
     wandb_entity.log(log_dict, step=step)
 
 
-
 def save_training_checkpoint(
     cfg,
     run_dir,
@@ -503,7 +482,6 @@ def save_training_checkpoint(
     train_dataset,
     distributed_state,
     new_state_dict,
-    
 ) -> None:
     """
     Save all training checkpoints including model components, LoRA adapter, and dataset statistics.
@@ -549,7 +527,7 @@ def save_training_checkpoint(
         processor.save_pretrained(checkpoint_dir)
 
         if cfg.use_fz:
-            vla.module.save_pretrained(checkpoint_dir) # directly save checkpoint without lora
+            vla.module.save_pretrained(checkpoint_dir)  # directly save checkpoint without lora
         else:
             vla.module.save_pretrained(adapter_dir)
 
@@ -559,7 +537,8 @@ def save_training_checkpoint(
 
         if cfg.use_diffusion and noisy_action_projector is not None:
             torch.save(
-                noisy_action_projector.state_dict(), checkpoint_dir / f"noisy_action_projector--{checkpoint_name_suffix}"
+                noisy_action_projector.state_dict(),
+                checkpoint_dir / f"noisy_action_projector--{checkpoint_name_suffix}",
             )
 
         if cfg.use_l1_regression and action_head is not None:
@@ -579,16 +558,19 @@ def save_training_checkpoint(
     if cfg.use_lora and cfg.merge_lora_during_training:
         if cfg.use_minivlm:
             config = AutoConfig.from_pretrained("pretrained_models/configs/config.json")
-            base_vla = AutoModelForVision2Seq.from_config(config, torch_dtype=torch.bfloat16)  # Create a new model with configuration, the parameters are randomly initialized
+            base_vla = AutoModelForVision2Seq.from_config(
+                config, torch_dtype=torch.bfloat16
+            )  # Create a new model with configuration, the parameters are randomly initialized
             # print(new_state_dict['action_queries.weight'])
-            new_state_dict['action_queries.weight'] = vla.state_dict()['module.base_model.model.action_queries.weight'].cpu()
+            new_state_dict["action_queries.weight"] = vla.state_dict()[
+                "module.base_model.model.action_queries.weight"
+            ].cpu()
             missing_keys, unexpected_keys = base_vla.load_state_dict(new_state_dict, strict=False)
-            
+
         else:
             base_vla = AutoModelForVision2Seq.from_pretrained(
-            cfg.config_file_path, torch_dtype=torch.bfloat16, low_cpu_mem_usage=False, trust_remote_code=False
-        )
-
+                cfg.config_file_path, torch_dtype=torch.bfloat16, low_cpu_mem_usage=False, trust_remote_code=False
+            )
 
         merged_vla = PeftModel.from_pretrained(base_vla, adapter_dir)
         merged_vla = merged_vla.merge_and_unload()
@@ -596,10 +578,9 @@ def save_training_checkpoint(
         if distributed_state.is_main_process:
             merged_vla.save_pretrained(checkpoint_dir)
             print(f"Saved merged model for Step {log_step} at: {checkpoint_dir}")
-        
+
         # Wait for merged model to be saved
         dist.barrier()
-
 
 
 def run_validation(
@@ -658,7 +639,7 @@ def run_validation(
                 use_film=cfg.use_film,
                 num_patches=num_patches,
                 compute_diffusion_l1=True,
-                use_pro_version=cfg.use_pro_version
+                use_pro_version=cfg.use_pro_version,
             )
 
             # Add the loss value to the metrics
@@ -685,7 +666,6 @@ def run_validation(
         log_metrics_to_wandb(avg_val_metrics, "VLA Val", log_step, wandb)
 
 
-
 @draccus.wrap()
 def finetune(cfg: FinetuneConfig) -> None:
     """
@@ -701,13 +681,13 @@ def finetune(cfg: FinetuneConfig) -> None:
 
     Returns:
         None.
-    """ 
+    """
 
     global RAW_STATE_DICT
 
-    assert not (cfg.use_l1_regression and cfg.use_diffusion), (
-        "Cannot do both L1 regression and diffusion. Please pick one of them!"
-    )
+    assert not (
+        cfg.use_l1_regression and cfg.use_diffusion
+    ), "Cannot do both L1 regression and diffusion. Please pick one of them!"
 
     # Trim trailing forward slash ('/') in VLA path if it exists
     cfg.config_file_path = cfg.config_file_path.rstrip("/")
@@ -728,7 +708,7 @@ def finetune(cfg: FinetuneConfig) -> None:
 
     # Initialize wandb logging
     if distributed_state.is_main_process:
-        wandb.init(project=cfg.wandb_project, name=f"ft+{run_id}", mode="offline")
+        wandb.init(project=cfg.wandb_project, name=f"ft+{run_id}")
 
     # Print detected constants
     print(
@@ -761,7 +741,6 @@ def finetune(cfg: FinetuneConfig) -> None:
         AutoProcessor.register(OpenVLAConfig, PrismaticProcessor)
         AutoModelForVision2Seq.register(OpenVLAConfig, OpenVLAForActionPrediction)
 
-
     # Update config.json and sync model files
     if distributed_state.is_main_process:
         update_auto_map(cfg.config_file_path)
@@ -775,18 +754,20 @@ def finetune(cfg: FinetuneConfig) -> None:
     processor = AutoProcessor.from_pretrained(cfg.config_file_path, trust_remote_code=True)
 
     if cfg.use_minivlm:
-        hf_token = ''
-        if 'prism-qwen25-extra-dinosiglip-224px-0_5b' in cfg.vlm_path:
-            
+        hf_token = ""
+        if "prism-qwen25-extra-dinosiglip-224px-0_5b" in cfg.vlm_path:
+
             vlm = load(cfg.vlm_path, hf_token=hf_token, load_for_training=True)
         else:
             vlm = load_vla(
                 cfg.vlm_path,
                 hf_token=hf_token,
                 load_for_training=True,
-                )
+            )
         config = AutoConfig.from_pretrained("pretrained_models/configs/config.json")
-        vla = AutoModelForVision2Seq.from_config(config, torch_dtype=torch.bfloat16).to(device_id)  # Create a new model with configuration, the parameters are randomly initialized
+        vla = AutoModelForVision2Seq.from_config(config, torch_dtype=torch.bfloat16).to(
+            device_id
+        )  # Create a new model with configuration, the parameters are randomly initialized
         # for name, param in model.named_parameters():
         #     print(f"{name}: {param.shape}")
         replace_map = [
@@ -797,7 +778,7 @@ def finetune(cfg: FinetuneConfig) -> None:
             ("projector.projector.2", "projector.fc2"),
             ("projector.projector.4", "projector.fc3"),
             ("gamma", "scale_factor"),
-            ]
+        ]
 
         def rename_state_dict_keys(state_dict, replace_map):
             new_state_dict = {}
@@ -808,21 +789,21 @@ def finetune(cfg: FinetuneConfig) -> None:
                         new_k = new_k.replace(old, new)
                 new_state_dict[new_k] = v
             return new_state_dict
-        
+
         old_state_dict = vlm.state_dict()
         RAW_STATE_DICT = rename_state_dict_keys(old_state_dict, replace_map)
-    
+
         missing_keys, unexpected_keys = vla.load_state_dict(RAW_STATE_DICT, strict=False)
         del old_state_dict
 
     else:
-        RAW_STATE_DICT ={}
+        RAW_STATE_DICT = {}
         vla = AutoModelForVision2Seq.from_pretrained(
             cfg.config_file_path,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=False,
             trust_remote_code=False,
-            ).to(device_id)
+        ).to(device_id)
 
     # Set number of images in VLA input
     vla.vision_backbone.set_num_images_in_input(cfg.num_images_in_input)
@@ -832,7 +813,7 @@ def finetune(cfg: FinetuneConfig) -> None:
     if cfg.use_lora:
         lora_config = LoraConfig(
             r=cfg.lora_rank,
-            lora_alpha= 2 * cfg.lora_rank,
+            lora_alpha=2 * cfg.lora_rank,
             lora_dropout=cfg.lora_dropout,
             target_modules="all-linear",
             init_lora_weights="gaussian",
@@ -882,17 +863,17 @@ def finetune(cfg: FinetuneConfig) -> None:
     # If applicable, instantiate continuous action head for L1 regression
     if cfg.use_l1_regression:
         action_head = init_module(
-        L1RegressionActionHead,
-        "action_head",
-        cfg,
-        device_id,
-        {
-            "input_dim": vla.module.llm_dim, 
-            "hidden_dim": vla.module.llm_dim, 
-            "action_dim": ACTION_DIM,
-            "use_pro_version": cfg.use_pro_version,
+            L1RegressionActionHead,
+            "action_head",
+            cfg,
+            device_id,
+            {
+                "input_dim": vla.module.llm_dim,
+                "hidden_dim": vla.module.llm_dim,
+                "action_dim": ACTION_DIM,
+                "use_pro_version": cfg.use_pro_version,
             },
-        to_bf16=True,
+            to_bf16=True,
         )
 
     # Get number of vision patches
@@ -922,8 +903,8 @@ def finetune(cfg: FinetuneConfig) -> None:
     # 2. CosineAnnealingLR
     # scheduler = CosineAnnealingLR(
     #         optimizer,
-    #         T_max=cfg.num_steps_before_decay, 
-    #         eta_min=0.0001,          
+    #         T_max=cfg.num_steps_before_decay,
+    #         eta_min=0.0001,
     #         )
 
     # Create Action Tokenizer
@@ -956,8 +937,8 @@ def finetune(cfg: FinetuneConfig) -> None:
         prompt_builder_fn=PurePromptBuilder,
         use_wrist_image=use_wrist_image,
         use_proprio=cfg.use_proprio,
-        use_minivlm=cfg.use_minivlm
-        )
+        use_minivlm=cfg.use_minivlm,
+    )
     train_dataset = RLDSDataset(
         cfg.data_root_dir,
         cfg.dataset_name,
@@ -992,7 +973,7 @@ def finetune(cfg: FinetuneConfig) -> None:
         collate_fn=collator,
         num_workers=0,  # Important: Set to 0 if using RLDS, which uses its own parallelism
     )
-    print('Len of dataloader: ', len(dataloader))
+    print("Len of dataloader: ", len(dataloader))
     if cfg.use_val_set:
         val_batch_size = cfg.batch_size
         val_dataloader = DataLoader(
@@ -1018,7 +999,9 @@ def finetune(cfg: FinetuneConfig) -> None:
         optimizer.zero_grad()
         for batch_idx, batch in enumerate(dataloader):
             # Compute training metrics and loss
-            compute_diffusion_l1 = (cfg.use_l1_regression and batch_idx % cfg.diffusion_sample_freq == 0) or (cfg.use_diffusion and batch_idx % cfg.diffusion_sample_freq == 0)
+            compute_diffusion_l1 = (cfg.use_l1_regression and batch_idx % cfg.diffusion_sample_freq == 0) or (
+                cfg.use_diffusion and batch_idx % cfg.diffusion_sample_freq == 0
+            )
             loss, metrics = run_forward_pass(
                 vla=vla,
                 action_head=action_head,

@@ -36,7 +36,14 @@ from experiments.robot.openvla_utils import (
 from experiments.robot.robot_utils import (
     get_image_resize_size,
 )
-from prismatic.vla.constants import ACTION_DIM, ACTION_TOKEN_BEGIN_IDX, IGNORE_INDEX, NUM_ACTIONS_CHUNK, PROPRIO_DIM, STOP_INDEX
+from prismatic.vla.constants import (
+    ACTION_DIM,
+    ACTION_TOKEN_BEGIN_IDX,
+    IGNORE_INDEX,
+    NUM_ACTIONS_CHUNK,
+    PROPRIO_DIM,
+    STOP_INDEX,
+)
 
 
 def get_openvla_prompt(instruction: str, openvla_path: Union[str, Path]) -> str:
@@ -65,7 +72,9 @@ class OpenVLAServer:
             self.action_head = get_action_head(cfg, self.vla.llm_dim)
 
         # Check that the model contains the action un-normalization key
-        assert cfg.unnorm_key in self.vla.norm_stats, f"Action un-norm key {cfg.unnorm_key} not found in VLA `norm_stats`!"
+        assert (
+            cfg.unnorm_key in self.vla.norm_stats
+        ), f"Action un-norm key {cfg.unnorm_key} not found in VLA `norm_stats`!"
 
         # Get Hugging Face processor
         self.processor = None
@@ -73,7 +82,6 @@ class OpenVLAServer:
 
         # Get expected image dimensions
         self.resize_size = get_image_resize_size(cfg)
-
 
     def get_server_action(self, payload: Dict[str, Any]) -> str:
         try:
@@ -86,7 +94,14 @@ class OpenVLAServer:
             instruction = observation["instruction"]
 
             action = get_vla_action(
-                self.cfg, self.vla, self.processor, observation, instruction, action_head=self.action_head, proprio_projector=self.proprio_projector, use_film=self.cfg.use_film,
+                self.cfg,
+                self.vla,
+                self.processor,
+                observation,
+                instruction,
+                action_head=self.action_head,
+                proprio_projector=self.proprio_projector,
+                use_film=self.cfg.use_film,
             )
 
             if double_encode:

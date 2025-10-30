@@ -4,13 +4,14 @@ Important constants for VLA training and evaluation.
 Attempts to automatically identify the correct constants to set based on the Python command used to launch
 training or evaluation. If it is unclear, defaults to using the LIBERO simulation benchmark constants.
 """
+
 import sys
 from enum import Enum
 
 # Qwen2.5-0.5B token constants
 IGNORE_INDEX = -100
 # ACTION_TOKEN_BEGIN_IDX = 31743
-ACTION_TOKEN_BEGIN_IDX  = 151386
+ACTION_TOKEN_BEGIN_IDX = 151386
 STOP_INDEX = 2  # '</s>'
 NUM_TOKENS = 64
 

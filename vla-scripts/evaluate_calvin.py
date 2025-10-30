@@ -1,12 +1,16 @@
 """Code to evaluate Calvin."""
+
 import argparse
 import json
 import logging
 import os
+
 # os.environ['PYTHONPATH'] = '/root/RoboDual:' + os.environ.get('PYTHONPATH', '')
 from collections import deque
+
 # from peft import PeftModel
 from pathlib import Path
+
 # import sys
 # sys.path.insert(0, '/root/RoboDual')
 import time
@@ -15,6 +19,7 @@ from moviepy.editor import ImageSequenceClip
 from accelerate import Accelerator
 from datetime import timedelta
 from accelerate.utils import InitProcessGroupKwargs
+
 # from openvla.prismatic.vla.action_tokenizer import ActionTokenizer
 # This is for using the locally installed repo clone when using slurm
 from calvin_agent.models.calvin_base_model import CalvinBaseModel
@@ -30,6 +35,7 @@ from transformers import AutoConfig, AutoImageProcessor
 from prismatic.extern.hf.configuration_prismatic import OpenVLAConfig
 from prismatic.extern.hf.processing_prismatic import PrismaticImageProcessor, PrismaticProcessor
 from prismatic.extern.hf.modeling_prismatic import OpenVLAForActionPrediction
+
 # sys.path.insert(0, Path(__file__).absolute().parents[2].as_posix())
 
 from calvin_agent.evaluation.multistep_sequences import get_sequences
@@ -55,6 +61,7 @@ from experiments.robot.openvla_utils import (
     get_proprio_projector,
     resize_image_for_policy,
 )
+
 # from ema_pytorch import EMA
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from experiments.robot.robot_utils import (
@@ -66,11 +73,12 @@ from experiments.robot.robot_utils import (
     normalize_gripper_action,
     set_seed_everywhere,
 )
+
 # logger = logging.getLogger(__name__)
 
 os.environ["FFMPEG_BINARY"] = "auto-detect"
 os.environ["CALVIN_ROOT"] = "calvin"
-CALVIN_ROOT = os.environ['CALVIN_ROOT']
+CALVIN_ROOT = os.environ["CALVIN_ROOT"]
 
 from collections import Counter
 import json
@@ -83,9 +91,8 @@ import draccus
 import os
 import torch
 
-
-
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 @dataclass
 class GenerateConfig:
@@ -146,7 +153,8 @@ class GenerateConfig:
     seed: int = 7                                 # Random Seed (for reproducibility)
 
     # fmt: on
-    save_version: str = "Pro"                        # version of exps
+    save_version: str = "Pro"  # version of exps
+
 
 def print_and_save(results, sequences, eval_result_path, task_name=None, epoch=None):
     current_data = {}
@@ -179,9 +187,9 @@ def print_and_save(results, sequences, eval_result_path, task_name=None, epoch=N
     current_data[epoch] = data
 
     # model_name = 'vla-test'
-    if not os.path.isdir(f'./{task_name}'):
-        os.mkdir(f'./{task_name}')
-    with open(f'./{task_name}/split_{torch.cuda.current_device()}.json', "w") as file:
+    if not os.path.isdir(f"./{task_name}"):
+        os.mkdir(f"./{task_name}")
+    with open(f"./{task_name}/split_{torch.cuda.current_device()}.json", "w") as file:
         json.dump(chain_sr, file)
 
     print()
@@ -198,18 +206,31 @@ def print_and_save(results, sequences, eval_result_path, task_name=None, epoch=N
 def make_env(dataset_path, observation_space, device):
     val_folder = Path(dataset_path) / "validation"
     from calvin_env_wrapper import CalvinEnvWrapperRaw
+
     env = CalvinEnvWrapperRaw(val_folder, observation_space, device)
     return env
 
 
-def evaluate_policy(model, env, eval_sr_path, eval_result_path, num_procs, procs_id, eval_dir, ep_len, num_sequences, task_name='test', enrich_lang=False, debug=False):
+def evaluate_policy(
+    model,
+    env,
+    eval_sr_path,
+    eval_result_path,
+    num_procs,
+    procs_id,
+    eval_dir,
+    ep_len,
+    num_sequences,
+    task_name="test",
+    enrich_lang=False,
+    debug=False,
+):
     conf_dir = Path(f"{CALVIN_ROOT}/calvin_models") / "conf"
     task_cfg = OmegaConf.load(conf_dir / "callbacks/rollout/tasks/new_playtable_tasks.yaml")
     task_oracle = hydra.utils.instantiate(task_cfg)
 
-
     if enrich_lang:
-        with open('/root/RoboDual/vla-scripts/enrich_lang_annotations.json', 'r') as f:
+        with open("/root/RoboDual/vla-scripts/enrich_lang_annotations.json", "r") as f:
             val_annotations = json.load(f)
     else:
         val_annotations = OmegaConf.load(conf_dir / "annotations/new_playtable_validation.yaml")
@@ -219,7 +240,7 @@ def evaluate_policy(model, env, eval_sr_path, eval_result_path, num_procs, procs
     eval_sequences = get_sequences(num_sequences)
 
     num_seq_per_procs = num_sequences // num_procs
-    eval_sequences = eval_sequences[num_seq_per_procs * procs_id:num_seq_per_procs * (procs_id + 1)]
+    eval_sequences = eval_sequences[num_seq_per_procs * procs_id : num_seq_per_procs * (procs_id + 1)]
 
     results = []
     if not debug:
@@ -227,11 +248,13 @@ def evaluate_policy(model, env, eval_sr_path, eval_result_path, num_procs, procs
 
     sequence_i = 0
     for initial_state, eval_sequence in eval_sequences:
-        result = evaluate_sequence(env, model, task_oracle, initial_state, eval_sequence, val_annotations, debug, eval_dir, sequence_i, ep_len)
+        result = evaluate_sequence(
+            env, model, task_oracle, initial_state, eval_sequence, val_annotations, debug, eval_dir, sequence_i, ep_len
+        )
         results.append(result)
         if not debug:
             success_list = count_success(results)
-            with open(eval_sr_path, 'a') as f:
+            with open(eval_sr_path, "a") as f:
                 line = f"{sequence_i}/{num_sequences}: "
                 for sr in success_list:
                     line += f"{sr:.3f} | "
@@ -247,7 +270,9 @@ def evaluate_policy(model, env, eval_sr_path, eval_result_path, num_procs, procs
     return results
 
 
-def evaluate_sequence(env, model, task_checker, initial_state, eval_sequence, val_annotations, debug, eval_dir, sequence_i, ep_len):
+def evaluate_sequence(
+    env, model, task_checker, initial_state, eval_sequence, val_annotations, debug, eval_dir, sequence_i, ep_len
+):
     robot_obs, scene_obs = get_env_state_for_initial_condition(initial_state)
     env.reset(robot_obs=robot_obs, scene_obs=scene_obs)
     success_counter = 0
@@ -258,7 +283,9 @@ def evaluate_sequence(env, model, task_checker, initial_state, eval_sequence, va
         print(f"Evaluating sequence: {' -> '.join(eval_sequence)}")
         print("Subtask: ", end="")
     for subtask_i, subtask in enumerate(eval_sequence):
-        success = rollout_hi3(env, model, task_checker, subtask, val_annotations, debug, eval_dir, subtask_i, sequence_i, ep_len)
+        success = rollout_hi3(
+            env, model, task_checker, subtask, val_annotations, debug, eval_dir, subtask_i, sequence_i, ep_len
+        )
         if success:  # return 5!!!!!!!!!!!!!!!!!!!
             # print('success: ', subtask_i)
             success_counter += 1
@@ -348,8 +375,8 @@ def rollout(env, model, task_oracle, subtask, val_annotations, debug, eval_dir, 
     start_info = env.get_info()
 
     img_dict = {
-        'static': [],
-        'gripper': [],
+        "static": [],
+        "gripper": [],
     }
     action_queue = deque(maxlen=8)
 
@@ -362,9 +389,8 @@ def rollout(env, model, task_oracle, subtask, val_annotations, debug, eval_dir, 
         action = process_action(action, "openvla")
         obs, reward, done, current_info = env.step(action.tolist())
 
-
-        img_dict['static'].append(copy.deepcopy(obs['rgb_obs']['rgb_static']))
-        img_dict['gripper'].append(copy.deepcopy(obs['rgb_obs']['rgb_gripper']))
+        img_dict["static"].append(copy.deepcopy(obs["rgb_obs"]["rgb_static"]))
+        img_dict["gripper"].append(copy.deepcopy(obs["rgb_obs"]["rgb_gripper"]))
 
         # check if current step solves a task
         current_task_info = task_oracle.get_task_info_for_set(start_info, current_info, {subtask})
@@ -372,14 +398,25 @@ def rollout(env, model, task_oracle, subtask, val_annotations, debug, eval_dir, 
             print(colored("success", "green"), end=" ")
             for key in img_dict.keys():
                 clip = ImageSequenceClip(img_dict[key], fps=50)
-                clip.write_videofile(os.path.join(eval_dir, f'{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4'), fps=50, codec='libx264', bitrate="5000k")
+                clip.write_videofile(
+                    os.path.join(eval_dir, f"{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4"),
+                    fps=50,
+                    codec="libx264",
+                    bitrate="5000k",
+                )
             return True
 
     print(colored("fail", "red"), end=" ")
     for key in img_dict.keys():
         clip = ImageSequenceClip(img_dict[key], fps=50)
-        clip.write_videofile(os.path.join(eval_dir, f'{sequence_i}-{subtask_i}-{subtask}-{key}-fail.mp4'), fps=50, codec='libx264', bitrate="5000k")
+        clip.write_videofile(
+            os.path.join(eval_dir, f"{sequence_i}-{subtask_i}-{subtask}-{key}-fail.mp4"),
+            fps=50,
+            codec="libx264",
+            bitrate="5000k",
+        )
     return False
+
 
 import os
 import time
@@ -400,8 +437,8 @@ def rollout_hi3(env, model, task_oracle, subtask, val_annotations, debug, eval_d
     start_info = env.get_info()
 
     img_dict = {
-        'static': [],
-        'gripper': [],
+        "static": [],
+        "gripper": [],
     }
 
     for step in range(80):
@@ -412,15 +449,20 @@ def rollout_hi3(env, model, task_oracle, subtask, val_annotations, debug, eval_d
         action = process_action(action, "openvla")
         obs, reward, done, current_info = env.step(action.tolist())
 
-        img_dict['static'].append(copy.deepcopy(obs['rgb_obs']['rgb_static']))
-        img_dict['gripper'].append(copy.deepcopy(obs['rgb_obs']['rgb_gripper']))
+        img_dict["static"].append(copy.deepcopy(obs["rgb_obs"]["rgb_static"]))
+        img_dict["gripper"].append(copy.deepcopy(obs["rgb_obs"]["rgb_gripper"]))
 
         current_task_info = task_oracle.get_task_info_for_set(start_info, current_info, {subtask})
         if len(current_task_info) > 0:
             print(colored("success", "green"), end=" ")
             for key in img_dict.keys():
                 clip = ImageSequenceClip(img_dict[key], fps=50)
-                clip.write_videofile(os.path.join(eval_dir, f'{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4'), fps=50, codec='libx264', bitrate="5000k")
+                clip.write_videofile(
+                    os.path.join(eval_dir, f"{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4"),
+                    fps=50,
+                    codec="libx264",
+                    bitrate="5000k",
+                )
             return True
 
         action_buffers[1] = model.step(obs, lang_annotation, 1)
@@ -428,15 +470,20 @@ def rollout_hi3(env, model, task_oracle, subtask, val_annotations, debug, eval_d
         action = process_action(action, "openvla")
         obs, reward, done, current_info = env.step(action.tolist())
 
-        img_dict['static'].append(copy.deepcopy(obs['rgb_obs']['rgb_static']))
-        img_dict['gripper'].append(copy.deepcopy(obs['rgb_obs']['rgb_gripper']))
+        img_dict["static"].append(copy.deepcopy(obs["rgb_obs"]["rgb_static"]))
+        img_dict["gripper"].append(copy.deepcopy(obs["rgb_obs"]["rgb_gripper"]))
 
         current_task_info = task_oracle.get_task_info_for_set(start_info, current_info, {subtask})
         if len(current_task_info) > 0:
             print(colored("success", "green"), end=" ")
             for key in img_dict.keys():
                 clip = ImageSequenceClip(img_dict[key], fps=50)
-                clip.write_videofile(os.path.join(eval_dir, f'{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4'), fps=50, codec='libx264', bitrate="5000k")
+                clip.write_videofile(
+                    os.path.join(eval_dir, f"{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4"),
+                    fps=50,
+                    codec="libx264",
+                    bitrate="5000k",
+                )
             return True
 
         action_buffers[2] = model.step(obs, lang_annotation, 2)
@@ -444,87 +491,115 @@ def rollout_hi3(env, model, task_oracle, subtask, val_annotations, debug, eval_d
         action = process_action(action, "openvla")
         obs, reward, done, current_info = env.step(action.tolist())
 
-        img_dict['static'].append(copy.deepcopy(obs['rgb_obs']['rgb_static']))
-        img_dict['gripper'].append(copy.deepcopy(obs['rgb_obs']['rgb_gripper']))
+        img_dict["static"].append(copy.deepcopy(obs["rgb_obs"]["rgb_static"]))
+        img_dict["gripper"].append(copy.deepcopy(obs["rgb_obs"]["rgb_gripper"]))
 
         current_task_info = task_oracle.get_task_info_for_set(start_info, current_info, {subtask})
         if len(current_task_info) > 0:
             print(colored("success", "green"), end=" ")
             for key in img_dict.keys():
                 clip = ImageSequenceClip(img_dict[key], fps=50)
-                clip.write_videofile(os.path.join(eval_dir, f'{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4'), fps=50, codec='libx264', bitrate="5000k")
+                clip.write_videofile(
+                    os.path.join(eval_dir, f"{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4"),
+                    fps=50,
+                    codec="libx264",
+                    bitrate="5000k",
+                )
             return True
 
         for t in range(2, 7):
-            action = (action_buffers[0][t] + action_buffers[1][t-1] + action_buffers[2][t-2]) / 3
+            action = (action_buffers[0][t] + action_buffers[1][t - 1] + action_buffers[2][t - 2]) / 3
             action = process_action(action, "openvla")
             obs, reward, done, current_info = env.step(action.tolist())
 
-            img_dict['static'].append(copy.deepcopy(obs['rgb_obs']['rgb_static']))
-            img_dict['gripper'].append(copy.deepcopy(obs['rgb_obs']['rgb_gripper']))
+            img_dict["static"].append(copy.deepcopy(obs["rgb_obs"]["rgb_static"]))
+            img_dict["gripper"].append(copy.deepcopy(obs["rgb_obs"]["rgb_gripper"]))
 
             current_task_info = task_oracle.get_task_info_for_set(start_info, current_info, {subtask})
             if len(current_task_info) > 0:
                 print(colored("success", "green"), end=" ")
                 for key in img_dict.keys():
                     clip = ImageSequenceClip(img_dict[key], fps=50)
-                    clip.write_videofile(os.path.join(eval_dir, f'{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4'), fps=50, codec='libx264', bitrate="5000k")
+                    clip.write_videofile(
+                        os.path.join(eval_dir, f"{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4"),
+                        fps=50,
+                        codec="libx264",
+                        bitrate="5000k",
+                    )
                 return True
 
         action = (action_buffers[1][7] + action_buffers[2][6]) / 2
         action = process_action(action, "openvla")
         obs, reward, done, current_info = env.step(action.tolist())
 
-        img_dict['static'].append(copy.deepcopy(obs['rgb_obs']['rgb_static']))
-        img_dict['gripper'].append(copy.deepcopy(obs['rgb_obs']['rgb_gripper']))
+        img_dict["static"].append(copy.deepcopy(obs["rgb_obs"]["rgb_static"]))
+        img_dict["gripper"].append(copy.deepcopy(obs["rgb_obs"]["rgb_gripper"]))
 
         current_task_info = task_oracle.get_task_info_for_set(start_info, current_info, {subtask})
         if len(current_task_info) > 0:
             print(colored("success", "green"), end=" ")
             for key in img_dict.keys():
                 clip = ImageSequenceClip(img_dict[key], fps=50)
-                clip.write_videofile(os.path.join(eval_dir, f'{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4'), fps=50, codec='libx264', bitrate="5000k")
+                clip.write_videofile(
+                    os.path.join(eval_dir, f"{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4"),
+                    fps=50,
+                    codec="libx264",
+                    bitrate="5000k",
+                )
             return True
 
         action = action_buffers[2][7]
         action = process_action(action, "openvla")
         obs, reward, done, current_info = env.step(action.tolist())
 
-        img_dict['static'].append(copy.deepcopy(obs['rgb_obs']['rgb_static']))
-        img_dict['gripper'].append(copy.deepcopy(obs['rgb_obs']['rgb_gripper']))
+        img_dict["static"].append(copy.deepcopy(obs["rgb_obs"]["rgb_static"]))
+        img_dict["gripper"].append(copy.deepcopy(obs["rgb_obs"]["rgb_gripper"]))
 
         current_task_info = task_oracle.get_task_info_for_set(start_info, current_info, {subtask})
         if len(current_task_info) > 0:
             print(colored("success", "green"), end=" ")
             for key in img_dict.keys():
                 clip = ImageSequenceClip(img_dict[key], fps=50)
-                clip.write_videofile(os.path.join(eval_dir, f'{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4'), fps=50, codec='libx264', bitrate="5000k")
+                clip.write_videofile(
+                    os.path.join(eval_dir, f"{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4"),
+                    fps=50,
+                    codec="libx264",
+                    bitrate="5000k",
+                )
             return True
 
     print(colored("fail", "red"), end=" ")
     for key in img_dict.keys():
         clip = ImageSequenceClip(img_dict[key], fps=50)
-        clip.write_videofile(os.path.join(eval_dir, f'{sequence_i}-{subtask_i}-{subtask}-{key}-fail.mp4'), fps=50, codec='libx264', bitrate="5000k")
+        clip.write_videofile(
+            os.path.join(eval_dir, f"{sequence_i}-{subtask_i}-{subtask}-{key}-fail.mp4"),
+            fps=50,
+            codec="libx264",
+            bitrate="5000k",
+        )
     return False
 
 
 def update_image_data(img_dict, obs):
-    img_dict['static'].append(copy.deepcopy(obs['rgb_obs']['rgb_static']))
-    img_dict['gripper'].append(copy.deepcopy(obs['rgb_obs']['rgb_gripper']))
+    img_dict["static"].append(copy.deepcopy(obs["rgb_obs"]["rgb_static"]))
+    img_dict["gripper"].append(copy.deepcopy(obs["rgb_obs"]["rgb_gripper"]))
+
 
 def check_success(start_info, current_info, subtask, task_oracle):
     return len(task_oracle.get_task_info_for_set(start_info, current_info, {subtask})) > 0
+
 
 def handle_success(img_dict, eval_dir, sequence_i, subtask_i, subtask):
     print(colored("success", "green"), end=" ")
     for key in img_dict.keys():
         clip = ImageSequenceClip(img_dict[key], fps=50)
-        clip.write_videofile(os.path.join(eval_dir, f'{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4'),
-                            fps=50, codec='libx264', bitrate="5000k")
+        clip.write_videofile(
+            os.path.join(eval_dir, f"{sequence_i}-{subtask_i}-{subtask}-{key}-succ.mp4"),
+            fps=50,
+            codec="libx264",
+            bitrate="5000k",
+        )
     return True
-
-
-
 
 
 from huggingface_hub import HfApi, hf_hub_download
@@ -532,6 +607,8 @@ import shutil
 from datetime import datetime
 import filecmp
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+
 def model_is_on_hf_hub(model_path: str) -> bool:
     """Checks whether a model path points to a model on Hugging Face Hub."""
     # If the API call below runs without error, the model is on the hub
@@ -605,8 +682,6 @@ def check_identical_files(path1: Union[str, Path], path2: Union[str, Path]) -> b
 
     # Check if contents match
     return filecmp.cmp(path1, path2, shallow=False)
-
-
 
 
 def _handle_file_sync(curr_filepath: str, checkpoint_filepath: str, file_type: str) -> None:
@@ -735,9 +810,9 @@ def find_checkpoint_file(pretrained_checkpoint: str, file_pattern: str) -> str:
             full_path = os.path.join(pretrained_checkpoint, filename)
             checkpoint_files.append(full_path)
 
-    assert len(checkpoint_files) == 1, (
-        f"Expected exactly 1 {file_pattern} checkpoint but found {len(checkpoint_files)} in directory: {pretrained_checkpoint}"
-    )
+    assert (
+        len(checkpoint_files) == 1
+    ), f"Expected exactly 1 {file_pattern} checkpoint but found {len(checkpoint_files)} in directory: {pretrained_checkpoint}"
 
     return checkpoint_files[0]
 
@@ -766,6 +841,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 import wandb
+
+
 def setup_logging(cfg):
     """Set up logging to file and optionally to wandb."""
     # Create run ID
@@ -788,7 +865,6 @@ def setup_logging(cfg):
         )
 
     return log_file, local_log_filepath, run_id
-
 
 
 def _load_dataset_stats(vla: torch.nn.Module, checkpoint_path: str) -> None:
@@ -819,11 +895,11 @@ def _load_dataset_stats(vla: torch.nn.Module, checkpoint_path: str) -> None:
         )
 
 
-
 MODEL_IMAGE_SIZES = {
     "openvla": 224,
     # Add other models as needed
 }
+
 
 def validate_config(cfg: GenerateConfig) -> None:
     """Validate configuration parameters."""
@@ -837,6 +913,7 @@ def validate_config(cfg: GenerateConfig) -> None:
 
 def get_image_resize_size(model_family) -> Union[int, tuple]:
     return MODEL_IMAGE_SIZES[model_family]
+
 
 def initialize_model(cfg: GenerateConfig):
     """Initialize model and associated components."""
@@ -870,6 +947,7 @@ def initialize_model(cfg: GenerateConfig):
 
     return model, action_head, proprio_projector, noisy_action_projector, processor
 
+
 @draccus.wrap()
 def main(cfg: GenerateConfig):
     seed_everything(cfg.seed)
@@ -878,42 +956,51 @@ def main(cfg: GenerateConfig):
     acc = Accelerator(kwargs_handlers=[kwargs])
     # device = acc.device
     validate_config(cfg)
-    
+
     model, action_head, proprio_projector, noisy_action_projector, processor = initialize_model(cfg)
 
-    current_time=time.strftime("%Y-%m-%d_%H-%M-%S")
+    current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
 
-    save_path = f'./evaluation_results'
+    save_path = f"./evaluation_results"
     observation_space = {
-        'rgb_obs': ['rgb_static', 'rgb_gripper'],  # rgb_tactile
-        'depth_obs': ['depth_static', 'depth_gripper'],
-        'state_obs': ['robot_obs'],
-        'actions': ['rel_actions'],
-        'language': ['language']}
+        "rgb_obs": ["rgb_static", "rgb_gripper"],  # rgb_tactile
+        "depth_obs": ["depth_static", "depth_gripper"],
+        "state_obs": ["robot_obs"],
+        "actions": ["rel_actions"],
+        "language": ["language"],
+    }
     eval_dir = save_path + f'/calvin/{current_time}_{cfg.pretrained_checkpoint.split("/")[-1]}/'
     os.makedirs(eval_dir, exist_ok=True)
-    env = make_env(os.path.join(CALVIN_ROOT, 'dataset/task_ABC_D'), observation_space, DEVICE)
+    env = make_env(os.path.join(CALVIN_ROOT, "dataset/task_ABC_D"), observation_space, DEVICE)
 
-
-    eva = DualSystemCalvinEvaluation(model, proprio_projector, noisy_action_projector, action_head, processor, use_x0_prediction=cfg.use_x0_prediction)
-    avg_reward = torch.tensor(evaluate_policy(
-        eva,
-        env,
-        eval_dir + 'success_rate.txt',
-        eval_dir + 'result.txt',
-        acc.num_processes,
-        acc.process_index,
-        eval_dir=eval_dir,
-        ep_len=360,
-        num_sequences=1000,
-        enrich_lang=cfg.enrich_lang,
-        debug=False,
-    )).float().mean().to(DEVICE)
+    eva = DualSystemCalvinEvaluation(
+        model, proprio_projector, noisy_action_projector, action_head, processor, use_x0_prediction=cfg.use_x0_prediction
+    )
+    avg_reward = (
+        torch.tensor(
+            evaluate_policy(
+                eva,
+                env,
+                eval_dir + "success_rate.txt",
+                eval_dir + "result.txt",
+                acc.num_processes,
+                acc.process_index,
+                eval_dir=eval_dir,
+                ep_len=360,
+                num_sequences=1000,
+                enrich_lang=cfg.enrich_lang,
+                debug=False,
+            )
+        )
+        .float()
+        .mean()
+        .to(DEVICE)
+    )
 
     acc.wait_for_everyone()
     avg_reward = acc.gather_for_metrics(avg_reward).mean()
     if acc.is_main_process:
-        print('average success rate ', avg_reward)
+        print("average success rate ", avg_reward)
 
 
 if __name__ == "__main__":
