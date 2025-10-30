@@ -10,7 +10,7 @@ from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Type
-import torch.nn.functional as F
+
 import draccus
 import torch
 import torch.distributed as dist
@@ -21,16 +21,17 @@ from huggingface_hub import HfApi, snapshot_download
 from peft import LoraConfig, PeftModel, get_peft_model
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import MultiStepLR, CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, MultiStepLR
 from torch.utils.data import DataLoader
 from transformers import AutoConfig, AutoImageProcessor, AutoModelForVision2Seq, AutoProcessor
 from transformers.modeling_outputs import CausalLMOutputWithPast
-import wandb
 
+import wandb
 from experiments.robot.openvla_utils import check_model_logic_mismatch, model_is_on_hf_hub, update_auto_map
 from prismatic.extern.hf.configuration_prismatic import OpenVLAConfig
 from prismatic.extern.hf.modeling_prismatic import OpenVLAForActionPrediction
 from prismatic.extern.hf.processing_prismatic import PrismaticImageProcessor, PrismaticProcessor
+from prismatic.models import load, load_vla, load_vlm_state_dict
 from prismatic.models.action_heads import L1RegressionActionHead
 from prismatic.models.backbones.llm.prompting import PurePromptBuilder
 from prismatic.models.film_vit_wrapper import FiLMedPrismaticVisionBackbone
@@ -47,12 +48,11 @@ from prismatic.vla.constants import (
     ACTION_DIM,
     ACTION_PROPRIO_NORMALIZATION_TYPE,
     NUM_ACTIONS_CHUNK,
-    PROPRIO_DIM,
     NUM_TOKENS,
+    PROPRIO_DIM,
 )
-from prismatic.vla.datasets import RLDSDataset, RLDSBatchTransform
+from prismatic.vla.datasets import RLDSBatchTransform, RLDSDataset
 from prismatic.vla.datasets.rlds.utils.data_utils import save_dataset_statistics
-from prismatic.models import load, load_vla
 
 # Sane Defaults
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -742,28 +742,28 @@ def finetune(cfg: FinetuneConfig) -> None:
         AutoModelForVision2Seq.register(OpenVLAConfig, OpenVLAForActionPrediction)
 
     # Update config.json and sync model files
-    if distributed_state.is_main_process:
-        update_auto_map(cfg.config_file_path)
-        check_model_logic_mismatch(cfg.config_file_path)
+    # if distributed_state.is_main_process:
+    #     update_auto_map(cfg.config_file_path)
+    #     check_model_logic_mismatch(cfg.config_file_path)
 
     # Wait for model files to be synced
     dist.barrier()
 
     # Load processor and VLA
-    AutoProcessor.register(OpenVLAConfig, PrismaticProcessor)
+    # AutoProcessor.register(OpenVLAConfig, PrismaticProcessor)
     processor = AutoProcessor.from_pretrained(cfg.config_file_path, trust_remote_code=True)
 
     if cfg.use_minivlm:
-        hf_token = ""
-        if "prism-qwen25-extra-dinosiglip-224px-0_5b" in cfg.vlm_path:
+        # hf_token = ""
+        # if "prism-qwen25-extra-dinosiglip-224px-0_5b" in cfg.vlm_path:
 
-            vlm = load(cfg.vlm_path, hf_token=hf_token, load_for_training=True)
-        else:
-            vlm = load_vla(
-                cfg.vlm_path,
-                hf_token=hf_token,
-                load_for_training=True,
-            )
+        #     vlm = load(cfg.vlm_path, hf_token=hf_token, load_for_training=True)
+        # else:
+        #     vlm = load_vla(
+        #         cfg.vlm_path,
+        #         hf_token=hf_token,
+        #         load_for_training=True,
+        #     )
         config = AutoConfig.from_pretrained("pretrained_models/configs/config.json")
         vla = AutoModelForVision2Seq.from_config(config, torch_dtype=torch.bfloat16).to(
             device_id
@@ -790,7 +790,8 @@ def finetune(cfg: FinetuneConfig) -> None:
                 new_state_dict[new_k] = v
             return new_state_dict
 
-        old_state_dict = vlm.state_dict()
+        # old_state_dict = vlm.state_dict()
+        old_state_dict = load_vlm_state_dict(cfg.vlm_path)
         RAW_STATE_DICT = rename_state_dict_keys(old_state_dict, replace_map)
 
         missing_keys, unexpected_keys = vla.load_state_dict(RAW_STATE_DICT, strict=False)
