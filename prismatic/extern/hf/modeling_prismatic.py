@@ -768,6 +768,15 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
         """Unnormalize actions using dataset statistics"""
         action_norm_stats = self.get_action_stats(unnorm_key)
 
+        if ACTION_PROPRIO_NORMALIZATION_TYPE == NormalizationType.NORMAL:
+            mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["mean"], dtype=bool))
+            actions = np.where(
+                mask,
+                (normalized_actions * action_norm_stats["std"]) + action_norm_stats["mean"],
+                normalized_actions,
+            )
+            return actions
+
         if ACTION_PROPRIO_NORMALIZATION_TYPE == NormalizationType.BOUNDS:
             mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["min"], dtype=bool))
             action_high, action_low = np.array(action_norm_stats["max"]), np.array(action_norm_stats["min"])
@@ -935,7 +944,9 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
         # Add proprioceptive features if provided
         use_proprio = proprio_projector is not None and proprio is not None
         if use_proprio:
-            proprio = torch.Tensor(proprio).to(projected_patch_embeddings.device, dtype=projected_patch_embeddings.dtype)
+            proprio = torch.Tensor(proprio).to(
+                projected_patch_embeddings.device, dtype=projected_patch_embeddings.dtype
+            )
 
         # Calculate number of patches (including proprio token and/or diffusion timestep embedding if present)
         NUM_PATCHES = self.vision_backbone.get_num_patches() * self.vision_backbone.get_num_images_in_input()

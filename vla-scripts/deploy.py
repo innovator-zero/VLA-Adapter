@@ -60,6 +60,7 @@ class OpenVLAServer:
 
         # Load model
         self.vla = get_vla(cfg)
+        self.vla.set_version(cfg.save_version)
 
         # Load proprio projector
         self.proprio_projector = None
@@ -135,6 +136,9 @@ class DeployConfig:
     #################################################################################################################
     model_family: str = "openvla"                    # Model family
     pretrained_checkpoint: Union[str, Path] = ""     # Pretrained checkpoint path
+    use_minivlm: bool = True
+    save_version: str = "vla-adapter"  # version of
+    use_pro_version: bool = True
 
     use_l1_regression: bool = True                   # If True, uses continuous action head with L1 regression objective
     use_diffusion: bool = False                      # If True, uses continuous action head with diffusion modeling objective (DDIM)
@@ -144,7 +148,7 @@ class DeployConfig:
     use_proprio: bool = True                         # Whether to include proprio state in input
 
     center_crop: bool = True                         # Center crop? (if trained w/ random crop image aug)
-    num_open_loop_steps: int = 25                    # Number of actions to execute open-loop before requerying policy
+    num_open_loop_steps: int = 30                    # Number of actions to execute open-loop before requerying policy
 
     unnorm_key: Union[str, Path] = ""                # Action un-normalization key
     use_relative_actions: bool = False               # Whether to use relative actions (delta joint angles)

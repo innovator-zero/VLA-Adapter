@@ -295,7 +295,7 @@ def get_vla(cfg: Any) -> torch.nn.Module:
         AutoModelForVision2Seq.register(OpenVLAConfig, OpenVLAForActionPrediction)
 
         # Update config.json and sync model files
-        update_auto_map(cfg.pretrained_checkpoint)
+        # update_auto_map(cfg.pretrained_checkpoint)
         check_model_logic_mismatch(cfg.pretrained_checkpoint)
 
     # Load the model
@@ -681,6 +681,14 @@ def normalize_proprio(proprio: np.ndarray, norm_stats: Dict[str, Any]) -> np.nda
     Returns:
         np.ndarray: Normalized proprioception data
     """
+
+    if ACTION_PROPRIO_NORMALIZATION_TYPE == NormalizationType.NORMAL:
+        mask = norm_stats.get("mask", np.ones_like(norm_stats["mean"], dtype=bool))
+        mean = np.array(norm_stats["mean"])
+        std = np.array(norm_stats["std"])
+        normalized_proprio = np.where(mask, (proprio - mean) / (std + 1e-8), proprio)
+        return normalized_proprio
+
     if ACTION_PROPRIO_NORMALIZATION_TYPE == NormalizationType.BOUNDS:
         mask = norm_stats.get("mask", np.ones_like(norm_stats["min"], dtype=bool))
         proprio_high, proprio_low = np.array(norm_stats["max"]), np.array(norm_stats["min"])

@@ -22,7 +22,7 @@ from transformers import AutoConfig, AutoImageProcessor, AutoModelForVision2Seq,
 from prismatic.extern.hf.configuration_prismatic import OpenVLAConfig
 from prismatic.extern.hf.modeling_prismatic import OpenVLAForActionPrediction
 from prismatic.extern.hf.processing_prismatic import PrismaticImageProcessor, PrismaticProcessor
-from prismatic.models import load, load_vla
+from prismatic.models import load, load_vla, load_vlm_state_dict
 
 
 @dataclass
@@ -31,8 +31,8 @@ class ConvertConfig:
 
     base_checkpoint: Union[str, Path] = ""                   # Base model checkpoint path/dir (either openvla/openvla-7b or whichever model you fine-tuned / resumed training from)
     lora_finetuned_checkpoint_dir: Union[str, Path] = ""     # Checkpoint directory containing the LoRA adapter
-    vlm_path: Union[str, Path] = "" 
-    use_minivla: bool = False                        # 
+    vlm_path: Union[str, Path] = "/mnt/nvme0/yuxiang/VLA-Adapter/prism-qwen25-extra-dinosiglip-224px-0_5b" 
+    use_minivla: bool = True                        # 
 
     # fmt: on
 
@@ -46,13 +46,7 @@ def main(cfg: ConvertConfig) -> None:
     AutoModelForVision2Seq.register(OpenVLAConfig, OpenVLAForActionPrediction)
 
     if cfg.use_minivla:
-        hf_token = ""
-        vlm = load_vla(
-            cfg.vlm_path,
-            hf_token=hf_token,
-            load_for_training=True,
-        )
-        config = AutoConfig.from_pretrained("../pretrained_models/configs/config.json")
+        config = AutoConfig.from_pretrained("pretrained_models/configs/config.json")
         vla = AutoModelForVision2Seq.from_config(config, torch_dtype=torch.bfloat16)
         # for name, param in model.named_parameters():
         #     print(f"{name}: {param.shape}")
@@ -76,7 +70,7 @@ def main(cfg: ConvertConfig) -> None:
                 new_state_dict[new_k] = v
             return new_state_dict
 
-        old_state_dict = vlm.state_dict()
+        old_state_dict = load_vlm_state_dict(cfg.vlm_path)
         RAW_STATE_DICT = rename_state_dict_keys(old_state_dict, replace_map)
 
         missing_keys, unexpected_keys = vla.load_state_dict(RAW_STATE_DICT, strict=False)

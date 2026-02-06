@@ -275,10 +275,6 @@ def load_vlm_state_dict(
     with open(config_json, "r") as f:
         model_cfg = json.load(f)["model"]
 
-    import pdb
-
-    pdb.set_trace()
-
     if image_sequence_len is None:
         if hasattr(model_cfg, "image_sequence_len"):
             image_sequence_len = model_cfg.image_sequence_len
