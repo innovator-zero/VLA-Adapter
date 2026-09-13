@@ -462,6 +462,7 @@ Please note that the obtained models will be stored in the `/outputs` folder. Ea
 ### :books: Related File for Inference
 * `experiments/robot/libero/`: LIBERO eval files
   * `run_libero_eval.py`: LIBERO eval script
+  * `run_libero_plus_eval.py`: LIBERO-plus evaluation, resume, and category reports ([usage](experiments/robot/libero/README.md))
   * `libero_utils.py`: LIBERO eval utils
 * `experiments/robot/`: General eval utils files
   * `openvla_utils.py`: VLA-specific eval utils

@@ -284,6 +284,7 @@ def run_episode(
     noisy_action_projector=None,
     initial_state=None,
     log_file=None,
+    raise_on_error=False,
 ):
     """Run a single episode in the environment."""
     # Reset environment
@@ -357,6 +358,8 @@ def run_episode(
 
     except Exception as e:
         log_message(f"Episode error: {e}", log_file)
+        if raise_on_error:
+            raise
 
     return success, replay_images
 
