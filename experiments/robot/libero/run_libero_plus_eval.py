@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import make_dataclass
 import logging
 import os
 from pathlib import Path
@@ -119,6 +120,12 @@ def make_parser():
     return parser
 
 
+def make_plus_config(base_config):
+    # draccus 0.8 dispatches on dataclass Field.type and cannot accept the
+    # string "int" produced by a class annotation under future annotations.
+    return make_dataclass("PlusConfig", [("num_trials_per_task", int, 1)], bases=(base_config,))
+
+
 def main(argv=None):
     parser = make_parser()
     options, model_args = parser.parse_known_args(argv)
@@ -149,13 +156,7 @@ def main(argv=None):
     from experiments.robot.libero import run_libero_eval as backend
 
     # Retain all existing model options while using one trial by default for Plus.
-    from dataclasses import dataclass
-
-    @dataclass
-    class PlusConfig(backend.GenerateConfig):
-        num_trials_per_task: int = 1
-
-    cfg = draccus.parse(PlusConfig, args=model_args)
+    cfg = draccus.parse(make_plus_config(backend.GenerateConfig), args=model_args)
     cfg.task_suite_name = options.task_suite_name
     evaluate(cfg, options, metadata, backend)
 

@@ -6,6 +6,16 @@ Horizons are 220/280/300/520 steps for Spatial/Object/Goal/Long, plus the defaul
 10 settling steps. Each task runs **one episode by default**.
 
 Activate an environment with the VLA-Adapter and LIBERO-plus dependencies.
+Install the pinned simulator dependencies in that environment:
+
+```bash
+python -m pip install -r experiments/robot/libero/libero_requirements.txt
+```
+
+Use `mujoco==3.2.3` with `robosuite==1.4.1`. MuJoCo 3.13.0 changes enum
+comparison behavior and can trigger the joint-type assertion in
+`robosuite/utils/binding_utils.py` during environment creation.
+
 Set `LIBERO_PLUS_ROOT` to a complete checkout containing
 `libero/libero/benchmark/task_classification.json`, BDDL files, initial states,
 and assets. The default checkout is `third_party/LIBERO-plus` in this repository.

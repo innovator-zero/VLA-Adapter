@@ -1,5 +1,7 @@
 imageio[ffmpeg]
 robosuite==1.4.1
+# Newer MuJoCo enum bindings break robosuite 1.4.1 joint-type membership checks.
+mujoco==3.2.3
 bddl
 easydict
 cloudpickle

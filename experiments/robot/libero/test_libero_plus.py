@@ -1,5 +1,6 @@
 """Standard-library regression tests; no GPU, checkpoint or simulator required."""
 import ast
+import dataclasses
 from collections import deque
 import io
 import json
@@ -9,6 +10,8 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
+import typing
+import weakref
 from unittest.mock import Mock, patch
 
 import run_libero_plus_eval as runner
@@ -16,7 +19,42 @@ import run_libero_plus_eval as runner
 reports = runner.reports
 
 
+def native_config_class():
+    """Load the real configuration declaration without model dependencies."""
+    path = Path(runner.__file__).with_name("run_libero_eval.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    nodes = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GenerateConfig"]
+    namespace = dict(dataclass=dataclasses.dataclass, Path=Path, Optional=typing.Optional, Union=typing.Union,
+                     TaskSuite=SimpleNamespace(LIBERO_SPATIAL="libero_spatial"))
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), namespace)
+    return namespace["GenerateConfig"]
+
+
 class PlusTests(unittest.TestCase):
+    def test_plus_config_exposes_real_types_to_decoder(self):
+        base = native_config_class()
+        # Call the actual factory in the future-annotations module, rather
+        # than redeclaring PlusConfig here (which previously hid the bug).
+        config = runner.make_plus_config(base)
+        fields = {field.name: field for field in dataclasses.fields(config)}
+        self.assertIs(fields["num_trials_per_task"].type, int)
+        weakref.ref(fields["num_trials_per_task"].type)
+        self.assertEqual(config().num_trials_per_task, 1)
+        self.assertEqual(base().num_trials_per_task, 50)
+
+    def test_real_draccus_model_arguments_and_trial_override(self):
+        try:
+            import draccus
+        except ImportError:
+            self.skipTest("Requires draccus from the evaluation environment")
+        config = runner.make_plus_config(native_config_class())
+        cfg = draccus.parse(config, args=["--pretrained_checkpoint", "outputs/test", "--use_pro_version", "False"])
+        self.assertEqual(cfg.num_trials_per_task, 1)
+        self.assertFalse(cfg.use_pro_version)
+        self.assertEqual(str(cfg.pretrained_checkpoint), "outputs/test")
+        cfg = draccus.parse(config, args=["--num_trials_per_task", "3"])
+        self.assertEqual(cfg.num_trials_per_task, 3)
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
